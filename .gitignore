@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+*.db
+*.db-journal
+data/chroma_db/
+data/pdfs/*.pdf
+!data/pdfs/.gitkeep
+.env
+.venv/
+venv/
+.streamlit/
+*.log
+data/analysis/
+data/manuscripts/
