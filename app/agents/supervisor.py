@@ -270,11 +270,26 @@ class Supervisor:
                 f"(status={task.status!r}).")
         if design_type not in DESIGN_TYPES:
             raise ValueError(f"Unknown design_type: {design_type!r}")
-        approved = [g for g in agent3.list_gaps(self.db, task_id=task.task_id)
-                    if g.researcher_decision == "approved"]
+        project = self._ensure_project(task)
+        all_gaps = agent3.list_gaps(self.db, project_id=project.id)
+        # Accept task-linked gaps plus standalone project gaps (Gaps tab
+        # discovery without a task); claim the latter for this task.
+        approved = [g for g in all_gaps
+                    if g.researcher_decision == "approved"
+                    and (g.task_id == task.task_id or g.task_id is None)]
         if not approved:
+            n_total = len(all_gaps)
+            n_appr = sum(1 for g in all_gaps
+                         if g.researcher_decision == "approved")
             raise ValueError(
-                "No gaps approved yet — approve at least one gap brief first.")
+                f"No approved gaps for this task/project "
+                f"({n_total} gap brief(s) in project '{project.name}', "
+                f"{n_appr} approved). "
+                f"Approve at least one gap brief first.")
+        for g in approved:
+            if g.task_id is None:
+                g.task_id = task.task_id
+        self.db.commit()
         task_service.start_task(self.db, task)
         task_service.append_log(
             self.db, task,
