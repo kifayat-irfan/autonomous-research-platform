@@ -876,10 +876,32 @@ with tab9:
         if proj_opts else None
 
     with st.expander("🎨 Style profile (from your own texts)"):
-        corpus = st.text_area("Paste 1+ of your own texts (blank line between texts)",
+        up = st.file_uploader(
+            "Upload your papers (PDF or TXT — multiple allowed)",
+            type=["pdf", "txt"], accept_multiple_files=True,
+            key="wr_style_files")
+        corpus = st.text_area("Or paste 1+ of your own texts (blank line between texts)",
                               height=150, key="wr_corpus")
-        if st.button("Build style profile") and corpus.strip():
-            texts = [t.strip() for t in corpus.split("\n\n") if t.strip()]
+        if st.button("Build style profile"):
+            texts = []
+            if up:
+                for f in up:
+                    try:
+                        if f.name.lower().endswith(".pdf"):
+                            import fitz
+                            doc = fitz.open(stream=f.read(), filetype="pdf")
+                            t = "\n".join(p.get_text() for p in doc)
+                        else:
+                            t = f.read().decode("utf-8", errors="ignore")
+                        if t.strip():
+                            texts.append(t.strip())
+                    except Exception as e:
+                        st.warning(f"Could not read {f.name}: {e}")
+            if corpus.strip():
+                texts += [t.strip() for t in corpus.split("\n\n") if t.strip()]
+            if not texts:
+                st.warning("Upload at least one file or paste some text first.")
+                st.stop()
             prof = api_post("/writing/style-profile", json={"texts": texts})
             if prof:
                 st.session_state["style_profile"] = prof
