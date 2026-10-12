@@ -397,11 +397,15 @@ class Supervisor:
             f"Phase 3: advancing to Agent 6 (writing) from "
             f"{len(approved_runs)} approved analysis run(s).")
         try:
+            style_prof = agent8.get_latest_decision(
+                self.db, project.id, "style_profile")
             ms = agent6.draft_manuscript(
                 self.db, project.id, task_id=task.task_id,
                 protocol_id=protocol_id,
                 title=f"Manuscript: {task.query[:80]}",
-                sections=sections)
+                sections=sections,
+                style_profile=(style_prof["details"]
+                               if style_prof else None))
             task_service.append_log(
                 self.db, task,
                 f"Agent 6 drafted manuscript {ms['id'][:8]} "

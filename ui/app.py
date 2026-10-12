@@ -884,7 +884,20 @@ with tab9:
             if prof:
                 st.session_state["style_profile"] = prof
                 st.json(prof)
+                if psel:
+                    api_post(f"/memory/projects/{proj_opts[psel]}/decisions",
+                             json={"decision_type": "style_profile",
+                                   "details": prof, "user_approved": True})
+                    st.success("Style profile saved to this project — it will "
+                               "be used for every manuscript drafted here.")
     style_prof = st.session_state.get("style_profile")
+    if not style_prof and psel:
+        saved = api_get(f"/memory/projects/{proj_opts[psel]}/decisions/latest",
+                        params={"decision_type": "style_profile"})
+        if saved and saved.get("decision"):
+            style_prof = saved["decision"]["details"]
+            st.session_state["style_profile"] = style_prof
+            st.info("Using the style profile saved for this project.")
 
     if psel:
         pid = proj_opts[psel]
@@ -903,9 +916,8 @@ with tab9:
                 ms = api_post("/writing/manuscripts",
                               json={"project_id": pid,
                                     "protocol_id": popts[psel2],
-                                    "title": title or None, "sections": secs})
-                # style profile is applied at draft time via a second call is
-                # overkill; note it for now
+                                    "title": title or None, "sections": secs,
+                                    "style_profile": st.session_state.get("style_profile")})
             if ms:
                 st.success(f"Drafted {len(ms['sections'])} sections.")
                 st.rerun()

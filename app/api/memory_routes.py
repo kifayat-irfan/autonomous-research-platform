@@ -53,6 +53,14 @@ def save_decision(project_id: str, payload: DecisionCreate,
     return DecisionOut.model_validate(d).model_dump()
 
 
+@router.get("/projects/{project_id}/decisions/latest", response_model=dict)
+def latest_decision(project_id: str, decision_type: str,
+                    db: Session = Depends(get_db)):
+    """Latest decision of a type (e.g. persisted style_profile)."""
+    d = agent8.get_latest_decision(db, project_id, decision_type)
+    return {"decision": d}
+
+
 @router.post("/projects/{project_id}/activity", response_model=ActivityOut)
 def log_activity(project_id: str, payload: ActivityCreate,
                  db: Session = Depends(get_db)):

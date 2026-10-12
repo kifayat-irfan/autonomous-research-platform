@@ -85,6 +85,28 @@ def save_project_decision(db: Session, project_id: str, decision_type: str,
     return decision
 
 
+def get_latest_decision(db: Session, project_id: str,
+                        decision_type: str) -> Dict | None:
+    """Return the most recent decision of a given type for a project.
+
+    Used e.g. to retrieve a persisted style profile for manuscript drafting.
+    """
+    row = db.scalars(
+        select(ProjectDecision)
+        .where(ProjectDecision.project_id == project_id,
+               ProjectDecision.decision_type == decision_type)
+        .order_by(ProjectDecision.created_at.desc())
+    ).first()
+    if row is None:
+        return None
+    try:
+        details = json.loads(row.details or "{}")
+    except Exception:
+        details = {}
+    return {"id": row.id, "decision_type": row.decision_type,
+            "details": details, "created_at": row.created_at}
+
+
 # ---------------------------------------------------------------------------
 # 2. Workspace state
 # ---------------------------------------------------------------------------

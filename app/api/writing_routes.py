@@ -33,7 +33,8 @@ def draft_manuscript(payload: ManuscriptCreateRequest,
         ms = agent6.draft_manuscript(
             db, payload.project_id, task_id=payload.task_id,
             protocol_id=payload.protocol_id, title=payload.title,
-            sections=payload.sections)
+            sections=payload.sections,
+            style_profile=payload.style_profile)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return ManuscriptOut.model_validate(ms).model_dump()

@@ -1181,6 +1181,7 @@ class ManuscriptCreateRequest(BaseModel):
     title: str | None = None
     sections: list[str] = ["abstract", "introduction", "methods", "results",
                            "discussion", "conclusion"]
+    style_profile: dict | None = None
 
 
 class StyleProfileRequest(BaseModel):
