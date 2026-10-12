@@ -354,9 +354,16 @@ with tab4:
     with st.form("new_task"):
         tq = st.text_input("New research task",
                            placeholder="e.g. trust calibration in robotaxis")
+        _t_projects = api_get("/memory/projects") or []
+        _t_proj_opts = {p["name"]: p["id"] for p in _t_projects}
+        tproj = st.selectbox("Attach to project", list(_t_proj_opts.keys()),
+                             key="new_task_proj") if _t_proj_opts else None
         if st.form_submit_button("▶ Run supervised pipeline") and tq:
             with st.spinner("Supervisor running (discovery → extraction)…"):
-                t = api_post("/supervisor/tasks", json={"query": tq, "limit": 10})
+                _payload = {"query": tq, "limit": 10}
+                if tproj:
+                    _payload["project_id"] = _t_proj_opts[tproj]
+                t = api_post("/supervisor/tasks", json=_payload)
             if t:
                 st.success(f"Task finished as **{t['status']}** "
                            f"in {t.get('duration_seconds') or 0:.1f}s.")
