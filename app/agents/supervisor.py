@@ -236,7 +236,23 @@ class Supervisor:
         task_service.append_log(
             self.db, task, "Phase 2: advancing to Agent 3 (gap discovery).")
         try:
-            briefs = self._phase_gap_discovery(task)
+            project = self._ensure_project(task)
+            # Gaps may already exist from a standalone Gaps-tab run: claim
+            # the unlinked ones for this task instead of creating duplicates.
+            existing = [g for g in agent3.list_gaps(
+                self.db, project_id=project.id) if g.task_id is None]
+            if existing:
+                briefs = []
+                for g in existing:
+                    g.task_id = task.task_id
+                    briefs.append(agent3.generate_gap_brief(g.id, self.db))
+                self.db.commit()
+                task_service.append_log(
+                    self.db, task,
+                    f"Reusing {len(briefs)} existing gap brief(s) "
+                    f"(no duplicate discovery run).")
+            else:
+                briefs = self._phase_gap_discovery(task)
             return self._pause_for_gap_approval(task, briefs)
         except Exception as exc:
             log.exception("Gap discovery failed for task %s", task_id)
