@@ -81,8 +81,20 @@ def upsert_paper(db: Session, paper_dict: dict, project_id: str | None = None,
         fields["task_id"] = task_id
     if paper_dict.get("pdf_path"):
         fields["pdf_path"] = paper_dict["pdf_path"]
-    if paper_dict.get("status") in PAPER_STATUSES:
-        fields["status"] = paper_dict["status"]
+    new_status = paper_dict.get("status")
+    if new_status in PAPER_STATUSES:
+        if paper is None:
+            fields["status"] = new_status
+        else:
+            # Never downgrade: a paper that already has an acquired PDF
+            # (e.g. via manual upload) keeps its status when a later
+            # discovery re-runs and finds no OA copy.
+            _RANK = {"metadata_only": 0, "restricted": 0,
+                     "needs_pdf_upload": 1, "oa_url_found": 1,
+                     "pdf_acquired": 2, "extraction_failed": 2,
+                     "full_text_parsed": 3}
+            if _RANK.get(new_status, 0) >= _RANK.get(paper.status, 0):
+                fields["status"] = new_status
 
     if paper is None:
         paper = Paper(**{k: v for k, v in fields.items() if v is not None})

@@ -121,10 +121,14 @@ class Supervisor:
                 f"Task {task_id} is not waiting for uploads "
                 f"(status={task.status!r})"
             )
+        import os as _os
         project = self._ensure_project(task)
-        ready = paper_service.list_papers(self.db, limit=1000)
-        ready = [p for p in ready
-                 if p.pdf_path and p.status == "pdf_acquired"
+        ready = [p for p in paper_service.list_papers(self.db, limit=1000)
+                 if p.pdf_path and _os.path.exists(p.pdf_path)
+                 # status label is secondary: the file's existence is truth.
+                 # needs_pdf_upload is accepted too (a re-run discovery may
+                 # have relabeled an uploaded paper before the upsert guard).
+                 and p.status in ("pdf_acquired", "needs_pdf_upload")
                  and (p.task_id == task_id
                       or (p.task_id is None and p.project_id == project.id))]
         if not ready:
