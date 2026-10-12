@@ -336,9 +336,9 @@ class Supervisor:
                             config: dict) -> Task:
         """Run Agent 5 on an uploaded dataset for approved protocol(s)."""
         task = self._get(task_id)
-        if task.status != "needs_protocol_approval":
+        if task.status not in ("needs_protocol_approval", "verified"):
             raise ValueError(
-                f"Task {task_id} is not awaiting protocol decisions "
+                f"Task {task_id} is not ready for analysis "
                 f"(status={task.status!r}).")
         approved = [p for p in agent4.list_protocols(self.db, task_id=task.task_id)
                     if p.approval_status == "approved"]
@@ -749,4 +749,8 @@ class Supervisor:
             self.db, task,
             "All audits clear of high-severity issues. Decision persisted "
             "to project memory (Agent 8).")
-        return task_service.finish_task(self.db, task, "verified")
+        # Stay in needs_protocol_approval: the approved + audited protocol is
+        # now ready for Phase 3 (Agent 5 analysis needs this status).
+        return task_service.set_status(
+            self.db, task, "needs_protocol_approval",
+            "Audit passed — protocol ready for analysis.")

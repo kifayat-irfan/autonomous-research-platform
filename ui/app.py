@@ -845,7 +845,7 @@ with tab8:
 
         st.subheader("Advance pipeline")
         tasks_a = [t for t in (api_get("/supervisor/tasks") or [])
-                   if t["status"] == "needs_protocol_approval"]
+                   if t["status"] in ("needs_protocol_approval", "verified")]
         if tasks_a:
             topts = {f"{t['query'][:50]}… (`{t['task_id'][:8]}`)": t["task_id"]
                      for t in tasks_a}
