@@ -256,6 +256,209 @@ JOURNAL_DB: List[Dict] = [
         "apc_info": "Hybrid; check current APC on the official page.",
         "source_link": "https://www.sciencedirect.com/journal/applied-ergonomics",
     },
+    # --- Client target journals, batch 2 (added 2026-10-12) ---
+    {
+        "name": "Transportation Research Part B: Methodological",
+        "scope_keywords": {"methodological", "optimization", "modeling",
+                           "statistical modeling", "operations research", "networks"},
+        "scope_summary": "Methodological advances in transportation science.",
+        "requirements": {"article_types": ["full length article"],
+                         "word_limit": "~8000 excluding references",
+                         "data_policy": "data availability statement encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.sciencedirect.com/journal/transportation-research-part-b-methodological",
+    },
+    {
+        "name": "Transportation Research Part D: Transport and Environment",
+        "scope_keywords": {"transport and environment", "emissions", "sustainability",
+                           "electric vehicles", "urban air mobility", "policy"},
+        "scope_summary": "Transport-environment interactions and sustainable mobility.",
+        "requirements": {"article_types": ["full length article"],
+                         "word_limit": "~8000 excluding references",
+                         "data_policy": "data availability statement encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.sciencedirect.com/journal/transportation-research-part-d-transport-and-environment",
+    },
+    {
+        "name": "Journal of Transport Geography",
+        "scope_keywords": {"transport geography", "spatial analysis", "mobility",
+                           "accessibility", "urban mobility", "travel behavior"},
+        "scope_summary": "Geographical dimensions of transport and mobility.",
+        "requirements": {"article_types": ["full length article"],
+                         "word_limit": "~8000",
+                         "data_policy": "data availability encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.sciencedirect.com/journal/journal-of-transport-geography",
+    },
+    {
+        "name": "Transportation",
+        "scope_keywords": {"transportation", "travel behavior", "policy",
+                           "planning", "mobility", "demand modeling"},
+        "scope_summary": "Transportation planning, policy and behavior.",
+        "requirements": {"article_types": ["original article"],
+                         "word_limit": "check current author guidelines",
+                         "data_policy": "data availability encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.springer.com/journal/11116",
+    },
+    {
+        "name": "Transportation Science",
+        "scope_keywords": {"transportation science", "operations research",
+                           "optimization", "logistics", "networks", "modeling"},
+        "scope_summary": "OR/MS approaches to transportation and logistics.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "check current author guidelines",
+                         "data_policy": "replication materials encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://pubsonline.informs.org/journal/trsc",
+    },
+    {
+        "name": "Transport Reviews",
+        "scope_keywords": {"review", "transport", "mobility", "policy",
+                           "synthesis", "meta-analysis"},
+        "scope_summary": "Critical reviews across transportation research.",
+        "requirements": {"article_types": ["review article"],
+                         "word_limit": "10000-15000 typical",
+                         "data_policy": "data availability encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.tandfonline.com/journals/ttrv20",
+    },
+    {
+        "name": "Safety Science",
+        "scope_keywords": {"safety science", "risk", "accidents", "human factors",
+                           "safety management", "traffic safety"},
+        "scope_summary": "Safety science: risk, accidents and prevention.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "~8000 excluding references",
+                         "data_policy": "data availability statement encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.sciencedirect.com/journal/safety-science",
+    },
+    {
+        "name": "IEEE Transactions on Intelligent Vehicles",
+        "scope_keywords": {"intelligent vehicles", "autonomous vehicles",
+                           "perception", "decision-making", "control",
+                           "connected vehicles"},
+        "scope_summary": "Intelligent vehicle technologies: perception to control.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "check current author guidelines",
+                         "data_policy": "reproducibility materials encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=7274857",
+    },
+    {
+        "name": "Expert Systems with Applications",
+        "scope_keywords": {"expert systems", "applied ai", "machine learning",
+                           "decision support", "intelligent systems"},
+        "scope_summary": "Applied AI and expert systems across domains.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "~8000 excluding references",
+                         "data_policy": "data availability statement encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.sciencedirect.com/journal/expert-systems-with-applications",
+    },
+    {
+        "name": "Engineering Applications of Artificial Intelligence",
+        "scope_keywords": {"applied ai", "engineering", "machine learning",
+                           "intelligent systems", "automation"},
+        "scope_summary": "AI applications in engineering systems.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "~8000 excluding references",
+                         "data_policy": "data availability statement encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.sciencedirect.com/journal/engineering-applications-of-artificial-intelligence",
+    },
+    {
+        "name": "Knowledge-Based Systems",
+        "scope_keywords": {"knowledge-based systems", "ai", "machine learning",
+                           "reasoning", "large language models", "representation"},
+        "scope_summary": "Knowledge-based and intelligent systems.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "~8000 excluding references",
+                         "data_policy": "data availability statement encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.sciencedirect.com/journal/knowledge-based-systems",
+    },
+    {
+        "name": "Information Fusion",
+        "scope_keywords": {"information fusion", "sensor fusion", "multi-modal",
+                           "deep learning", "perception", "autonomous systems"},
+        "scope_summary": "Information fusion: theory and applications.",
+        "requirements": {"article_types": ["research article", "review"],
+                         "word_limit": "~8000 excluding references",
+                         "data_policy": "data availability statement encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.sciencedirect.com/journal/information-fusion",
+    },
+    {
+        "name": "Artificial Intelligence",
+        "scope_keywords": {"artificial intelligence", "machine learning",
+                           "reasoning", "planning", "knowledge representation",
+                           "large language models"},
+        "scope_summary": "Foundational AI research (Elsevier journal).",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "check current author guidelines",
+                         "data_policy": "data availability encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.sciencedirect.com/journal/artificial-intelligence",
+    },
+    {
+        "name": "Machine Learning with Applications",
+        "scope_keywords": {"machine learning", "applied ml", "deep learning",
+                           "data-driven", "prediction", "classification"},
+        "scope_summary": "Applied machine learning research.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "check current author guidelines",
+                         "data_policy": "data availability encouraged"},
+        "apc_info": "Open access APC applies; check current fee officially.",
+        "source_link": "https://www.sciencedirect.com/journal/machine-learning-with-applications",
+    },
+    {
+        "name": "Ergonomics",
+        "scope_keywords": {"ergonomics", "human factors", "human performance",
+                           "workload", "safety", "interaction"},
+        "scope_summary": "Ergonomics and human factors research.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "check current author guidelines",
+                         "data_policy": "data availability encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.tandfonline.com/journals/terg20",
+    },
+    {
+        "name": "International Journal of Industrial Ergonomics",
+        "scope_keywords": {"industrial ergonomics", "human factors", "work design",
+                           "safety", "human-machine interaction"},
+        "scope_summary": "Ergonomics in industrial and occupational settings.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "~8000 excluding references",
+                         "data_policy": "data availability statement encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.sciencedirect.com/journal/international-journal-of-industrial-ergonomics",
+    },
+    {
+        "name": "International Journal of Human-Computer Interaction",
+        "scope_keywords": {"human-computer interaction", "user experience",
+                           "trust", "ai interaction", "technology acceptance",
+                           "large language models"},
+        "scope_summary": "HCI: interaction, UX and human-AI collaboration.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "check current author guidelines",
+                         "data_policy": "data availability encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://www.tandfonline.com/journals/hihc20",
+    },
+    {
+        "name": "IEEE Transactions on Human-Machine Systems",
+        "scope_keywords": {"human-machine systems", "human-automation interaction",
+                           "trust", "supervisory control", "decision-making",
+                           "remote driving"},
+        "scope_summary": "Human-machine systems: interaction, automation, control.",
+        "requirements": {"article_types": ["research article"],
+                         "word_limit": "check current author guidelines",
+                         "data_policy": "reproducibility materials encouraged"},
+        "apc_info": "Hybrid; check current APC on the official page.",
+        "source_link": "https://ieeexplore.ieee.org/xpl/RecentIssue.jsp?punumber=6221036",
+    },
 ]
 
 
@@ -270,13 +473,57 @@ def _score(keywords: List[str], journal: Dict) -> float:
     return round(hits / len(kws), 3)
 
 
+def _manuscript_keywords(db: Session, manuscript_id: str) -> List[str]:
+    """Extract contribution/methodology/scope signals from a manuscript.
+
+    Used so journal recommendations reflect the manuscript's actual content,
+    not just hand-typed keywords (client requirement 2026-10-12).
+    """
+    try:
+        from app.agents import agent6_writing as agent6
+        d = agent6.get_manuscript_dict(manuscript_id, db)
+    except Exception:
+        log.warning("Could not load manuscript %s for journal matching",
+                    manuscript_id)
+        return []
+    texts = [d.get("title") or ""]
+    secs = d.get("sections") or {}
+    if isinstance(secs, dict):
+        for key in ("abstract", "methods", "introduction"):
+            if secs.get(key):
+                texts.append(str(secs[key]))
+    stop = {"this", "that", "with", "from", "were", "have", "which", "their",
+            "study", "research", "paper", "results", "based", "using", "used",
+            "also", "into", "such", "between", "these", "those", "more",
+            "than", "when", "while", "where", "been", "both", "will",
+            "findings", "analysis", "method", "data", "section"}
+    words = re.findall(r"[a-z]{4,}", " ".join(texts).lower())
+    seen, out = set(), []
+    for w in words:
+        if w not in stop and w not in seen:
+            seen.add(w)
+            out.append(w)
+        if len(out) >= 60:
+            break
+    return out
+
+
 def match_journals(db: Session, project_id: str, keywords: List[str],
                    task_id: str | None = None,
                    manuscript_id: str | None = None,
                    top_n: int = 5) -> List[Dict]:
-    """Score journals by scope-keyword overlap; persist top matches."""
+    """Score journals by scope-keyword overlap; persist top matches.
+
+    Discovery is never restricted to the curated journals (Agent 1 searches
+    Semantic Scholar + PubMed broadly). When a manuscript_id is supplied, its
+    title/abstract/methods also feed the matching so recommendations reflect
+    the manuscript's actual contribution, methodology and scope.
+    """
+    all_kws = list(keywords or [])
+    if manuscript_id:
+        all_kws += _manuscript_keywords(db, manuscript_id)
     ranked = sorted(
-        ({"journal": j, "score": _score(keywords, j)} for j in JOURNAL_DB),
+        ({"journal": j, "score": _score(all_kws, j)} for j in JOURNAL_DB),
         key=lambda x: x["score"], reverse=True)[:top_n]
     out = []
     for item in ranked:
