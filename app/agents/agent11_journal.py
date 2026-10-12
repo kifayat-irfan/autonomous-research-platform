@@ -153,7 +153,7 @@ def match_journals(db: Session, project_id: str, keywords: List[str],
         db.commit()
         db.refresh(row)
         out.append({
-            "match_id": row.id, "journal_name": j["name"],
+            "id": row.id, "journal_name": j["name"],
             "scope_summary": j["scope_summary"], "match_score": item["score"],
             "requirements": j["requirements"], "apc_info": j["apc_info"],
             "checked_date": CHECKED, "source_link": j["source_link"],
@@ -194,7 +194,7 @@ def build_reviewer_response_matrix(db: Session, project_id: str,
         db.add(row)
         db.commit()
         db.refresh(row)
-        out.append({"response_id": row.id, "reviewer": row.reviewer,
+        out.append({"id": row.id, "reviewer": row.reviewer,
                     "comment": row.comment, "response": row.response,
                     "manuscript_change": row.manuscript_change,
                     "status": row.status})
@@ -218,7 +218,7 @@ def update_response(db: Session, response_id: str,
         row.status = status
     db.commit()
     db.refresh(row)
-    return {"response_id": row.id, "reviewer": row.reviewer,
+    return {"id": row.id, "reviewer": row.reviewer,
             "comment": row.comment, "response": row.response,
             "manuscript_change": row.manuscript_change, "status": row.status}
 
