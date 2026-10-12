@@ -370,33 +370,34 @@ def list_gaps(db: Session, project_id: str | None = None,
 
 
 def generate_gap_brief(gap_id: str, db: Session) -> Dict:
-    """Structured gap brief (spec Appendix A3 + compulsory attachments)."""
+    """Structured gap brief.
+
+    Flat shape matches GapBriefOut (API response model) and the Streamlit
+    UI: id, known_summary/unknown_summary, supporting_evidence,
+    counter_search_query/counter_search_results, importance/feasibility
+    scores.
+    """
     gap = get_gap(db, gap_id)
     if gap is None:
         raise ValueError(f"Unknown gap_id: {gap_id}")
     return {
-        "gap_id": gap.id,
+        "id": gap.id,
         "project_id": gap.project_id,
         "task_id": gap.task_id,
         "gap_statement": gap.gap_statement,
         "gap_type": gap.gap_type,
-        "known_vs_unknown": {
-            "known": gap.known_summary,
-            "unknown": gap.unknown_summary,
-        },
+        "known_summary": gap.known_summary,
+        "unknown_summary": gap.unknown_summary,
         "supporting_evidence": gap.supporting_list,  # paper source links
-        "counter_search": {
-            "query": gap.counter_search_query,
-            "findings": gap.counter_list,  # prior-art links
-        },
-        "scores": {
-            "importance": gap.importance_score,
-            "feasibility": gap.feasibility_score,
-        },
+        "counter_search_query": gap.counter_search_query,
+        "counter_search_results": gap.counter_list,  # prior-art links
+        "importance_score": gap.importance_score,
+        "feasibility_score": gap.feasibility_score,
         "verification_status": gap.verification_status,
         "researcher_decision": gap.researcher_decision,
         "researcher_note": gap.researcher_note,
-        "method": METHOD,
+        "design_type": gap.design_type,
+        "created_at": gap.created_at,
     }
 
 

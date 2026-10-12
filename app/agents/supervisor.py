@@ -597,15 +597,15 @@ class Supervisor:
         briefs = agent3.run_gap_discovery(
             project.id, self.db, task_id=task.task_id, max_gaps=5)
         for b in briefs:
-            n_counter = len(b["counter_search"]["findings"])
+            n_counter = len(b["counter_search_results"])
             task_service.append_log(
                 self.db, task,
                 f"GAP [{b['gap_type']}] {b['verification_status']}: "
                 f"{b['gap_statement'][:100]}… "
                 f"({n_counter} counter-search results, "
-                f"importance={b['scores']['importance']}, "
-                f"feasibility={b['scores']['feasibility']})")
-            for r in b["counter_search"]["findings"][:3]:
+                f"importance={b['importance_score']}, "
+                f"feasibility={b['feasibility_score']})")
+            for r in b["counter_search_results"][:3]:
                 task_service.append_log(
                     self.db, task,
                     f"  counter-search hit: {r.get('title', '')[:70]} — "
