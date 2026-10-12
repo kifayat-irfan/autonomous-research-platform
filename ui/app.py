@@ -146,6 +146,19 @@ with tab1:
 
     st.subheader("Active projects")
     projects = api_get("/memory/projects") or []
+    with st.expander("➕ New project"):
+        with st.form("new_project"):
+            name = st.text_input("Project name")
+            desc = st.text_area("Description")
+            kw = st.text_input("Keywords (comma-separated)")
+            if st.form_submit_button("Create project") and name:
+                res = api_post("/memory/projects", json={
+                    "name": name, "description": desc or None,
+                    "keywords": [k.strip() for k in kw.split(",") if k.strip()] or None,
+                })
+                if res:
+                    st.success(f"Project '{name}' created.")
+                    st.rerun()
     if projects:
         for p in projects:
             with st.expander(f"📁 {p['name']}"):
@@ -162,19 +175,7 @@ with tab1:
                             if a.get("evidence_link") else ""
                         st.caption(f"`{a['agent_name']}` — {a['action'][:120]}{link}")
     else:
-        st.info("No projects yet — create one below.")
-        with st.form("new_project"):
-            name = st.text_input("Project name")
-            desc = st.text_area("Description")
-            kw = st.text_input("Keywords (comma-separated)")
-            if st.form_submit_button("Create project") and name:
-                res = api_post("/memory/projects", json={
-                    "name": name, "description": desc or None,
-                    "keywords": [k.strip() for k in kw.split(",") if k.strip()] or None,
-                })
-                if res:
-                    st.success(f"Project '{name}' created.")
-                    st.rerun()
+        st.info("No projects yet — create one using '➕ New project' above.")
 
 # ---------------------------------------------------------------------------
 # TAB 2 — Literature Discovery (Agent 1)
