@@ -699,7 +699,7 @@ with tab7:
             st.info("No audit reports yet.")
         for r in reports:
             with st.container(border=True):
-                st.markdown(f"**Report `{r['report_id'][:8]}`** · "
+                st.markdown(f"**Report `{r['id'][:8]}`** · "
                             f"{status_badge(r['overall_status'])}")
                 s = r.get("summary", {})
                 m1, m2, m3, m4 = st.columns(4)
@@ -728,8 +728,8 @@ with tab7:
                         else:
                             st.markdown(meta)
                         if fl["status"] == "open" and st.button(
-                                "✔ Mark resolved", key=f"flr_{fl['flag_id']}"):
-                            api_post(f"/audit/flags/{fl['flag_id']}/resolve")
+                                "✔ Mark resolved", key=f"flr_{fl['id']}"):
+                            api_post(f"/audit/flags/{fl['id']}/resolve")
                             st.rerun()
 
         st.subheader("Numerical consistency check")

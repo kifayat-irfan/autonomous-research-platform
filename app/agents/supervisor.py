@@ -358,14 +358,14 @@ class Supervisor:
                 protocol_id=approved[0].id)
             task_service.append_log(
                 self.db, task,
-                f"Agent 5 finished run {run['run_id'][:8]}: "
+                f"Agent 5 finished run {run['id'][:8]}: "
                 f"{run['cleaning_report'].get('n_rows_clean')} clean rows; "
                 f"reproduction script at {run['script_path']}. "
                 f"GATE: pausing as needs_analysis_approval — researcher must "
                 f"approve results before writing.")
             agent8.log_activity_feed(
                 self.db, project.id, "agent5",
-                f"Analysis run {run['run_id'][:8]} ({analysis_type}) awaiting "
+                f"Analysis run {run['id'][:8]} ({analysis_type}) awaiting "
                 f"researcher approval.", task_id=task.task_id)
             return task_service.set_status(
                 self.db, task, "needs_analysis_approval")
@@ -404,12 +404,12 @@ class Supervisor:
                 sections=sections)
             task_service.append_log(
                 self.db, task,
-                f"Agent 6 drafted manuscript {ms['manuscript_id'][:8]} "
+                f"Agent 6 drafted manuscript {ms['id'][:8]} "
                 f"({len(ms['sections'])} sections, evidence-grounded only). "
                 f"GATE: pausing as needs_manuscript_approval.")
             agent8.log_activity_feed(
                 self.db, project.id, "agent6",
-                f"Manuscript {ms['manuscript_id'][:8]} drafted; awaiting "
+                f"Manuscript {ms['id'][:8]} drafted; awaiting "
                 f"researcher approval.", task_id=task.task_id)
             return task_service.set_status(
                 self.db, task, "needs_manuscript_approval")
@@ -724,7 +724,7 @@ class Supervisor:
                 blocked_reports.append(report)
             agent8.log_activity_feed(
                 self.db, project.id, "agent7",
-                f"Audit {report['report_id'][:8]} for protocol {proto.id[:8]}: "
+                f"Audit {report['id'][:8]} for protocol {proto.id[:8]}: "
                 f"{report['overall_status']}.", task_id=task.task_id)
 
         if blocked_reports:
@@ -735,7 +735,7 @@ class Supervisor:
                 f"flags before proceeding. The system will not auto-fix.")
             agent8.save_project_decision(
                 self.db, project.id, "audit_blocked",
-                {"blocked_reports": [r["report_id"] for r in blocked_reports]},
+                {"blocked_reports": [r["id"] for r in blocked_reports]},
                 user_approved=False, task_id=task.task_id,
                 evidence_link=None)
             return task_service.set_status(self.db, task, "blocked")

@@ -288,12 +288,13 @@ def get_manuscript_dict(manuscript_id: str, db: Session) -> Dict:
     if ms is None:
         raise ValueError(f"Unknown manuscript id: {manuscript_id}")
     return {
-        "manuscript_id": ms.id, "project_id": ms.project_id,
+        "id": ms.id, "project_id": ms.project_id,
         "task_id": ms.task_id, "protocol_id": ms.protocol_id,
         "title": ms.title, "sections": ms.sections_dict,
         "style_profile": ms.style_dict, "evidence_map": ms.evidence_list,
         "docx_path": ms.docx_path, "approval_status": ms.approval_status,
-        "researcher_note": ms.researcher_note, "method": METHOD,
+        "researcher_note": ms.researcher_note,
+        "created_at": ms.created_at,
     }
 
 

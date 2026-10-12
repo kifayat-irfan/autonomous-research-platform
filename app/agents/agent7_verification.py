@@ -345,14 +345,14 @@ def get_report_dict(report_id: str, db: Session) -> Dict:
         raise ValueError(f"Unknown report_id: {report_id}")
     import json as _j
     return {
-        "report_id": r.id,
+        "id": r.id,
         "project_id": r.project_id,
         "task_id": r.task_id,
         "protocol_id": r.protocol_id,
         "overall_status": r.overall_status,
         "summary": _j.loads(r.summary or "{}"),
         "flags": [{
-            "flag_id": f.id, "severity": f.severity, "category": f.category,
+            "id": f.id, "severity": f.severity, "category": f.category,
             "claim_text": f.claim_text, "expected": f.expected,
             "found": f.found, "passage_text": f.passage_text,
             "page_number": f.page_number, "source_link": f.source_link,

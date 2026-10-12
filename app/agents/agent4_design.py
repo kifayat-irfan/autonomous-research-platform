@@ -421,7 +421,7 @@ def get_protocol_dict(protocol_id: str, db: Session) -> Dict:
     if p is None:
         raise ValueError(f"Unknown protocol_id: {protocol_id}")
     return {
-        "protocol_id": p.id,
+        "id": p.id,
         "project_id": p.project_id,
         "task_id": p.task_id,
         "gap_id": p.gap_id,
@@ -435,7 +435,7 @@ def get_protocol_dict(protocol_id: str, db: Session) -> Dict:
         "approval_checkpoint": p.checkpoint_dict,
         "approval_status": p.approval_status,
         "researcher_note": p.researcher_note,
-        "method": METHOD,
+        "created_at": p.created_at,
     }
 
 

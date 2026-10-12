@@ -391,7 +391,7 @@ def get_run_dict(run_id: str, db: Session) -> Dict:
     if r is None:
         raise ValueError(f"Unknown analysis run id: {run_id}")
     return {
-        "run_id": r.id, "project_id": r.project_id, "task_id": r.task_id,
+        "id": r.id, "project_id": r.project_id, "task_id": r.task_id,
         "protocol_id": r.protocol_id, "dataset_name": r.dataset_name,
         "dataset_checksum": r.dataset_checksum,
         "analysis_type": r.analysis_type, "analysis_config": r.config_dict,
@@ -399,7 +399,7 @@ def get_run_dict(run_id: str, db: Session) -> Dict:
         "script_path": r.script_path, "log": r.log,
         "approval_status": r.approval_status,
         "researcher_note": r.researcher_note,
-        "method": METHOD,
+        "created_at": r.created_at,
     }
 
 
