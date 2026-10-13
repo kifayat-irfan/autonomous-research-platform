@@ -277,59 +277,84 @@ with tab2:
     bank_proj = st.selectbox("Show papers for project", list(proj_opts.keys()),
                              key="bank_proj")
     bank_pid = proj_opts[bank_proj]
-    with st.expander("➕ Add your own paper (e.g. client's publications)"):
+    with st.expander("➕ Add your own papers (e.g. client's publications) — bulk upload"):
         if not bank_pid:
             st.warning("Select a project first.")
         else:
-            # Versioned widget keys: bumping _mp_ver after each add guarantees
-            # a completely fresh form (Streamlit sometimes restores popped keys).
-            v = st.session_state.get("_mp_ver", 0)
-            if st.session_state.pop("_mp_just_added", False):
-                st.success("Paper added — PDF ready. Form cleared for the next one.")
-            mp_file = st.file_uploader(
-                "PDF file — details auto-fill on upload (you can edit them)",
-                type=["pdf"], key=f"mp_file_{v}")
-            # Auto-extract metadata when a NEW file is chosen.
-            if mp_file is not None and st.session_state.get("_mp_last_file") != (
-                    mp_file.name, mp_file.size, v):
-                with st.spinner("Reading PDF details…"):
-                    md = api_post(
-                        "/discovery/papers/extract-metadata",
-                        files={"file": (mp_file.name, mp_file.getvalue(),
-                                        "application/pdf")})
-                if md:
-                    st.session_state[f"mp_title_{v}"] = md.get("title", "")
-                    st.session_state[f"mp_authors_{v}"] = md.get("authors", "")
-                    st.session_state[f"mp_journal_{v}"] = md.get("journal", "")
-                    st.session_state[f"mp_year_{v}"] = md.get("year", "")
-                    st.session_state[f"mp_doi_{v}"] = md.get("doi", "")
-                    st.session_state["_mp_last_file"] = (mp_file.name,
-                                                         mp_file.size, v)
-                    st.success("Details filled from the PDF — review/edit below.")
-                    st.rerun()
-            mp_title = st.text_input("Paper title", key=f"mp_title_{v}")
-            mp_authors = st.text_input("Authors (comma-separated)",
-                                       key=f"mp_authors_{v}")
-            c1, c2 = st.columns(2)
-            mp_journal = c1.text_input("Journal", key=f"mp_journal_{v}")
-            mp_year = c2.text_input("Year", key=f"mp_year_{v}")
-            mp_doi = st.text_input("DOI (optional)", key=f"mp_doi_{v}")
-            if st.button("Add paper") and mp_title.strip() and mp_file is not None:
-                with st.spinner("Adding paper…"):
-                    data = {"project_id": bank_pid, "title": mp_title.strip(),
-                            "authors": mp_authors, "journal": mp_journal,
-                            "doi": mp_doi}
-                    if mp_year.strip().isdigit():
-                        data["year"] = int(mp_year.strip())
-                    res = api_post("/discovery/papers/manual", data=data,
-                                   files={"file": (mp_file.name,
-                                                   mp_file.getvalue(),
-                                                   "application/pdf")})
-                if res:
-                    # Fresh form for the next paper.
-                    st.session_state["_mp_ver"] = v + 1
-                    st.session_state["_mp_just_added"] = True
-                    st.session_state.pop("_mp_last_file", None)
+            # Versioned keys: bumping _mpb_ver after each add gives a fresh form.
+            bv = st.session_state.get("_mpb_ver", 0)
+            if st.session_state.pop("_mpb_just_added", False):
+                st.success("Papers added — form cleared for the next batch.")
+            up_files = st.file_uploader(
+                "PDF files — details auto-fill on upload (edit in the table below)",
+                type=["pdf"], accept_multiple_files=True, key=f"mpb_files_{bv}")
+            if up_files:
+                cache = st.session_state.get("_mpb_cache", {})
+                fresh = [f for f in up_files
+                         if (f.name, f.size, bv) not in cache]
+                if fresh:
+                    with st.spinner(f"Reading {len(fresh)} PDF(s)…"):
+                        for f in fresh:
+                            md = api_post(
+                                "/discovery/papers/extract-metadata",
+                                files={"file": (f.name, f.getvalue(),
+                                                "application/pdf")}) or {}
+                            cache[(f.name, f.size, bv)] = {
+                                "title": md.get("title", ""),
+                                "authors": md.get("authors", ""),
+                                "journal": md.get("journal", ""),
+                                "year": md.get("year", ""),
+                                "doi": md.get("doi", ""),
+                                "pdf_bytes": f.getvalue(),
+                                "pdf_name": f.name,
+                            }
+                    st.session_state["_mpb_cache"] = cache
+                import pandas as pd
+                rows = []
+                for f in up_files:
+                    r = cache.get((f.name, f.size, bv), {})
+                    rows.append({"File": f.name, "Title": r.get("title", ""),
+                                 "Authors": r.get("authors", ""),
+                                 "Journal": r.get("journal", ""),
+                                 "Year": r.get("year", ""),
+                                 "DOI": r.get("doi", "")})
+                st.caption("Review/edit the extracted details, then add them all.")
+                edited = st.data_editor(
+                    pd.DataFrame(rows), key=f"mpb_editor_{bv}",
+                    num_rows="fixed", use_container_width=True,
+                    column_config={
+                        "File": st.column_config.TextColumn(disabled=True, width="small"),
+                        "Title": st.column_config.TextColumn(width="large"),
+                        "Authors": st.column_config.TextColumn(width="large"),
+                        "Journal": st.column_config.TextColumn(width="medium"),
+                        "Year": st.column_config.TextColumn(width="small"),
+                        "DOI": st.column_config.TextColumn(width="medium"),
+                    })
+                if st.button(f"Add all {len(up_files)} papers", key=f"mpb_add_{bv}"):
+                    ok, total = 0, len(up_files)
+                    with st.spinner(f"Adding {total} papers…"):
+                        for i, f in enumerate(up_files):
+                            r = cache.get((f.name, f.size, bv), {})
+                            row = edited.iloc[i]
+                            title = str(row["Title"]).strip()
+                            if not title or not r.get("pdf_bytes"):
+                                continue
+                            data = {"project_id": bank_pid, "title": title,
+                                    "authors": str(row["Authors"]),
+                                    "journal": str(row["Journal"]),
+                                    "doi": str(row["DOI"])}
+                            if str(row["Year"]).strip().isdigit():
+                                data["year"] = int(str(row["Year"]).strip())
+                            res = api_post(
+                                "/discovery/papers/manual", data=data,
+                                files={"file": (r["pdf_name"], r["pdf_bytes"],
+                                                "application/pdf")})
+                            if res:
+                                ok += 1
+                    st.session_state["_mpb_ver"] = bv + 1
+                    st.session_state["_mpb_just_added"] = True
+                    st.session_state.pop("_mpb_cache", None)
+                    st.success(f"Added {ok}/{total} papers.")
                     st.rerun()
     bank_papers = api_get("/discovery/papers",
                           params={"project_id": bank_pid} if bank_pid else {}) or []
