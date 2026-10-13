@@ -227,6 +227,90 @@ def _sec_conclusion(m: Dict, style_hint: str) -> str:
     ).strip()
 
 
+# ---------------------------------------------------------------------------
+# LLM-enhanced section prose (template fallback)
+# ---------------------------------------------------------------------------
+
+_SECTION_GUIDANCE = {
+    "abstract": ("Write a structured abstract (Background / Methods / Results / "
+                 "Conclusion) of 150-220 words."),
+    "introduction": ("Write an academic introduction: establish the research "
+                     "gap, summarize what is known vs unknown, and cite the "
+                     "provided evidence. 250-350 words."),
+    "methods": ("Write the Methods section from the approved protocol: design, "
+                "procedure, measures, analysis plan. 200-300 words."),
+    "results": ("Report the analysis results factually with the exact numbers "
+                "provided. Do not interpret beyond what the numbers show. "
+                "200-300 words."),
+    "discussion": ("Interpret the results against the research gap, note "
+                   "limitations, suggest future work. 200-300 words."),
+    "conclusion": ("Concise conclusion: what was done, what was found, what "
+                   "it means. 100-150 words."),
+}
+
+
+def _materials_brief(m: Dict) -> str:
+    """Compact text brief of materials for the LLM prompt."""
+    lines = []
+    gap = m.get("gap")
+    if gap is not None:
+        # gap may be an ORM object or missing
+        try:
+            lines.append(f"Research gap: {gap.gap_statement}")
+            if getattr(gap, "unknown_summary", None):
+                lines.append(f"Unknown: {gap.unknown_summary}")
+        except Exception:
+            pass
+    proto = m.get("protocol")
+    if proto is not None:
+        try:
+            secs = proto.sections_dict or {}
+            lines.append(f"Design: {secs.get('design_overview', '')}")
+            lines.append(f"Procedure: {str(secs.get('procedure', ''))[:400]}")
+            meas = secs.get("measures", []) or []
+            lines.append("Measures: " + "; ".join(str(x)[:120] for x in meas[:6]))
+        except Exception:
+            pass
+    for run in (m.get("analyses") or [])[:3]:
+        try:
+            r = run.results_dict or {}
+            lines.append(
+                f"Analysis ({run.analysis_type}, n={r.get('n', '?')}): "
+                f"{str(r)[:500]}")
+        except Exception:
+            pass
+    for e in (m.get("evidence") or [])[:8]:
+        try:
+            lines.append(
+                f"Evidence: {str(e.get('claim_text', ''))[:220]} "
+                f"[{e.get('title', '')[:60]}]")
+        except Exception:
+            pass
+    return "\n".join(lines)[:4000]
+
+
+def _llm_section(name: str, m: Dict, style_hint: str) -> str:
+    """Generate one section via LLM. Raises on any failure (caller falls back)."""
+    from app.core.llm import complete
+    guidance = _SECTION_GUIDANCE.get(name, "Write this manuscript section.")
+    brief = _materials_brief(m)
+    prompt = (
+        f"You are an academic writing assistant. {guidance}\n\n"
+        f"PROJECT MATERIALS (use ONLY these — never invent):\n{brief}\n\n"
+        f"Style: {style_hint}\n\n"
+        "STRICT RULES:\n"
+        "- Use ONLY the facts, numbers, and claims in the materials above.\n"
+        "- Never invent citations, author names, statistics, or findings.\n"
+        "- Mark uncertainty where the materials are thin.\n"
+        "- Plain academic prose, no markdown headings, no bullet lists."
+    )
+    return complete(
+        prompt,
+        system="You write precise academic prose grounded strictly in provided "
+               "materials. You never fabricate.",
+        max_tokens=900, temperature=0.5)
+
+
 _BUILDERS = {
     "abstract": _sec_abstract,
     "introduction": _sec_introduction,
@@ -235,6 +319,21 @@ _BUILDERS = {
     "discussion": _sec_discussion,
     "conclusion": _sec_conclusion,
 }
+
+
+def _build_section(name: str, m: Dict, hint: str) -> tuple[str, str]:
+    """Build one section: LLM when configured, else template.
+
+    Returns (text, provenance) where provenance is 'llm' or 'template'.
+    """
+    from app.core import llm as _llm
+    if _llm.is_configured():
+        try:
+            return _llm_section(name, m, hint), "llm"
+        except Exception as exc:
+            log.warning("LLM section '%s' failed (%s); using template.", name,
+                        exc)
+    return _BUILDERS[name](m, hint), "template"
 
 
 def draft_manuscript(db: Session, project_id: str,
@@ -263,7 +362,15 @@ def draft_manuscript(db: Session, project_id: str,
     materials["evidence"] = ev_dicts
 
     hint = _style_hint(style_profile)
-    built = {name: _BUILDERS[name](materials, hint) for name in sections}
+    built: Dict[str, str] = {}
+    provenance: Dict[str, str] = {}
+    for name in sections:
+        text, prov = _build_section(name, materials, hint)
+        built[name] = text
+        provenance[name] = prov
+    n_llm = sum(1 for v in provenance.values() if v == "llm")
+    if n_llm:
+        log.info("Manuscript sections via LLM: %d/%d", n_llm, len(sections))
     evidence_map = [{
         "section": name,
         "citations": [e["source_link"] for e in ev_dicts[:5] if e["source_link"]],
@@ -273,7 +380,8 @@ def draft_manuscript(db: Session, project_id: str,
         project_id=project_id, task_id=task_id, protocol_id=protocol_id,
         title=title or f"Draft manuscript ({len(sections)} sections)",
         sections=json.dumps(built),
-        style_profile=json.dumps(style_profile or {}),
+        style_profile=json.dumps({**(style_profile or {}),
+                                  "_section_provenance": provenance}),
         evidence_map=json.dumps(evidence_map),
     )
     db.add(row)

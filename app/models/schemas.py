@@ -64,7 +64,8 @@ AUDIT_OVERALL = {"pass", "fail", "blocked"}
 NOVELTY_STATUS = {"pending_search", "challenged_pass", "challenged_disproved"}
 
 # --- Phase 3 vocabularies ---
-ANALYSIS_TYPES = {"descriptive", "ttest", "chi2", "correlation", "regression"}
+ANALYSIS_TYPES = {"descriptive", "ttest", "anova", "chi2", "correlation",
+                "regression", "full_suite"}
 SCREENING_DECISIONS = {"include", "exclude", "maybe"}
 ROB_RATINGS = {"low", "some_concerns", "high"}
 REVIEW_STAGES = {"title_abstract", "full_text"}

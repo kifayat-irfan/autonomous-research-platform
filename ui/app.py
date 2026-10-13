@@ -128,6 +128,31 @@ def status_badge(status: str) -> str:
     return f":{colors.get(status, 'gray')}[{status}]"
 
 
+def task_link_banner() -> dict | None:
+    """Show a banner when a pipeline task is active, guiding the researcher
+    to the task-linked flow instead of the standalone (exploration) flow.
+
+    Returns the first active task dict, or None.
+    """
+    try:
+        tasks = api_get("/supervisor/tasks") or []
+    except Exception:
+        return None
+    active = [t for t in tasks
+              if t.get("status") not in ("verified", "failed", "blocked")]
+    if not active:
+        return None
+    t = active[0]
+    st.info(
+        f"🔗 **Active task:** {t.get('query', '')[:70]} "
+        f"(`{t.get('task_id', '')[:8]}` · {t.get('status')}) — "
+        f"use **🔗 Advance pipeline** below to keep runs linked to the task. "
+        f"🔬 Standalone runs above are for exploration only and won't move "
+        f"the task forward.",
+        icon="🔗")
+    return t
+
+
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
@@ -140,6 +165,14 @@ with st.sidebar:
         st.success("Backend: online")
     else:
         st.warning("Backend unreachable — start it with:\n`uvicorn app.main:app`")
+    try:
+        llm_s = api_get("/llm/status") or {}
+        if llm_s.get("configured"):
+            st.success(f"🤖 LLM: active ({llm_s.get('model', '?')})")
+        else:
+            st.caption("🤖 LLM: off — template mode. Set LLM_API_KEY to enable.")
+    except Exception:
+        pass
 
 st.title("🔬 Autonomous Research Platform")
 st.caption("Phase 1 — Literature-bank MVP · every claim links to its source")
@@ -508,6 +541,23 @@ with tab3:
         st.subheader("Saved evidence")
         ev_rows = api_get("/extraction/evidence",
                           params={"paper_id": paper["id"], "limit": 50}) or []
+        n_ver = sum(1 for e in ev_rows
+                    if e.get("verification_state") == "verified")
+        n_unver = sum(1 for e in ev_rows
+                      if e.get("verification_state") == "unverified")
+        if ev_rows:
+            st.caption(f"✅ {n_ver} verified · ⏳ {n_unver} unverified "
+                       f"· {len(ev_rows)} total")
+            if n_unver and st.button(
+                    f"✔ Verify all {n_unver} unverified",
+                    key=f"verall_{paper['id']}"):
+                r = api_post("/extraction/evidence/bulk-verify",
+                             params={"paper_id": paper["id"],
+                                     "state": "verified",
+                                     "only_state": "unverified"})
+                if r:
+                    st.success(f"Marked {r.get('updated', 0)} verified.")
+                st.rerun()
         for e in ev_rows:
             with st.container(border=True):
                 st.write(e["claim_text"])
@@ -639,6 +689,7 @@ with tab5:
     st.header("💡 Research Gaps & Novelty — Agent 3")
     st.caption("Every gap is challenged against prior art before you see a "
                "novelty claim. Disproved gaps cannot be approved.")
+    task_link_banner()
     projects = api_get("/memory/projects") or []
     proj_opts = {p["name"]: p["id"] for p in projects}
     psel = st.selectbox("Project", list(proj_opts.keys()), key="gap_proj") \
@@ -703,7 +754,8 @@ with tab5:
                         api_post(f"/gaps/{g['id']}/challenge")
                     st.rerun()
 
-        st.subheader("Advance pipeline")
+        st.subheader("🔗 Advance pipeline (task-linked)")
+        st.caption("Moves the active task forward. Runs here are linked to the task.")
         tasks_g = [t for t in (api_get("/supervisor/tasks") or [])
                    if t["status"] == "needs_gap_approval"]
         if tasks_g:
@@ -774,6 +826,7 @@ with tab6:
     st.header("📋 Research Protocols & Measurement — Agent 4")
     st.caption("Protocols are drafts until YOU approve them — nothing moves to "
                "data collection without your explicit approval.")
+    task_link_banner()
     projects = api_get("/memory/projects") or []
     proj_opts = {p["name"]: p["id"] for p in projects}
     psel = st.selectbox("Project", list(proj_opts.keys()), key="proto_proj") \
@@ -871,7 +924,8 @@ with tab6:
                                           "note": note})
                             st.rerun()
 
-        st.subheader("Advance pipeline")
+        st.subheader("🔗 Advance pipeline (task-linked)")
+        st.caption("Moves the active task forward. Runs here are linked to the task.")
         tasks_p = [t for t in (api_get("/supervisor/tasks") or [])
                    if t["status"] == "needs_protocol_approval"]
         if tasks_p:
@@ -892,6 +946,7 @@ with tab7:
     st.header("🛡️ Scientific Audit & Quality Check — Agent 7")
     st.caption("Independent verification: HIGH-severity flags block progression. "
                "Nothing is auto-fixed.")
+    task_link_banner()
     projects = api_get("/memory/projects") or []
     proj_opts = {p["name"]: p["id"] for p in projects}
     psel = st.selectbox("Project", list(proj_opts.keys()), key="audit_proj") \
@@ -982,37 +1037,84 @@ with tab8:
     st.header("📊 Reproducible Analysis — Agent 5")
     st.caption("Every number is computed from your uploaded data. The exact "
                "reproduction script is saved with each run.")
+    task_link_banner()
     projects = api_get("/memory/projects") or []
     proj_opts = {p["name"]: p["id"] for p in projects}
     psel = st.selectbox("Project", list(proj_opts.keys()), key="an_proj") \
         if proj_opts else None
 
-    def _analysis_config_form(key_prefix: str):
+    def _csv_columns(uploaded) -> list:
+        """Read column names from an uploaded CSV (header only)."""
+        if uploaded is None:
+            return []
+        try:
+            import io
+            import pandas as pd
+            return list(pd.read_csv(io.BytesIO(uploaded.getvalue()),
+                                    nrows=0).columns)
+        except Exception:
+            return []
+
+    def _analysis_config_form(key_prefix: str, columns: list | None = None):
+        cols = columns or []
         atype = st.selectbox(
             "Analysis type",
-            ["descriptive", "ttest", "chi2", "correlation", "regression"],
+            ["descriptive", "full_suite", "ttest", "anova", "chi2",
+             "correlation", "regression"],
             key=f"{key_prefix}_type")
+
+        def _col_input(label: str, key: str) -> str:
+            if cols:
+                return st.selectbox(label, cols, key=key)
+            return st.text_input(label, key=key)
+
         cfg: dict = {}
-        if atype == "ttest":
-            cfg["group_col"] = st.text_input("Group column", key=f"{key_prefix}_g")
-            cfg["value_col"] = st.text_input("Value column", key=f"{key_prefix}_v")
+        if atype == "full_suite":
+            st.caption("Descriptives + correlations + regression in one run. "
+                       "Outcome auto-detected (override below if needed).")
+            oc = _col_input("Outcome column (optional — auto-detect)",
+                            key=f"{key_prefix}_o")
+            if oc:
+                cfg["outcome"] = oc
+        elif atype == "ttest":
+            cfg["group_col"] = _col_input("Group column (2 groups)",
+                                          key=f"{key_prefix}_g")
+            cfg["value_col"] = _col_input("Value column (numeric)",
+                                          key=f"{key_prefix}_v")
+        elif atype == "anova":
+            cfg["group_col"] = _col_input("Group column (2+ groups)",
+                                          key=f"{key_prefix}_g")
+            cfg["value_col"] = _col_input("Value column (numeric)",
+                                          key=f"{key_prefix}_v")
         elif atype == "chi2":
-            cfg["col1"] = st.text_input("Column 1", key=f"{key_prefix}_c1")
-            cfg["col2"] = st.text_input("Column 2", key=f"{key_prefix}_c2")
+            cfg["col1"] = _col_input("Column 1", key=f"{key_prefix}_c1")
+            cfg["col2"] = _col_input("Column 2", key=f"{key_prefix}_c2")
         elif atype == "correlation":
-            cols = st.text_input("Columns (comma-separated)", key=f"{key_prefix}_cs")
-            cfg["cols"] = [c.strip() for c in cols.split(",") if c.strip()]
+            if cols:
+                sel = st.multiselect("Columns", cols, key=f"{key_prefix}_cs")
+                cfg["cols"] = sel
+            else:
+                raw = st.text_input("Columns (comma-separated)",
+                                    key=f"{key_prefix}_cs")
+                cfg["cols"] = [c.strip() for c in raw.split(",") if c.strip()]
         elif atype == "regression":
-            cfg["outcome"] = st.text_input("Outcome column", key=f"{key_prefix}_o")
-            preds = st.text_input("Predictors (comma-separated)", key=f"{key_prefix}_p")
-            cfg["predictors"] = [c.strip() for c in preds.split(",") if c.strip()]
+            cfg["outcome"] = _col_input("Outcome column", key=f"{key_prefix}_o")
+            if cols:
+                sel = st.multiselect("Predictors", cols, key=f"{key_prefix}_p")
+                cfg["predictors"] = sel
+            else:
+                raw = st.text_input("Predictors (comma-separated)",
+                                    key=f"{key_prefix}_p")
+                cfg["predictors"] = [c.strip() for c in raw.split(",")
+                                     if c.strip()]
         return atype, cfg
 
     if psel:
         pid = proj_opts[psel]
-        st.subheader("New analysis run")
+        st.subheader("🔬 New analysis run (standalone exploration)")
         up = st.file_uploader("Dataset (CSV)", type=["csv"], key="an_file")
-        atype, cfg = _analysis_config_form("an")
+        an_cols = _csv_columns(up)
+        atype, cfg = _analysis_config_form("an", an_cols)
         if st.button("▶ Run analysis") and up is not None:
             import json as _json
             with st.spinner("Agent 5 cleaning + analyzing…"):
@@ -1055,7 +1157,8 @@ with tab8:
                              json={"approved": False})
                     st.rerun()
 
-        st.subheader("Advance pipeline")
+        st.subheader("🔗 Advance pipeline (task-linked)")
+        st.caption("Moves the active task forward. Runs here are linked to the task.")
         tasks_a = [t for t in (api_get("/supervisor/tasks") or [])
                    if t["status"] in ("needs_protocol_approval", "verified")]
         if tasks_a:
@@ -1064,7 +1167,8 @@ with tab8:
             tsel = st.selectbox("Task", list(topts.keys()), key="adv_an_task")
             up2 = st.file_uploader("Dataset (CSV) for pipeline", type=["csv"],
                                    key="adv_an_file")
-            atype2, cfg2 = _analysis_config_form("advan")
+            adv_cols = _csv_columns(up2)
+            atype2, cfg2 = _analysis_config_form("advan", adv_cols)
             if st.button("📊 Advance to analysis (Agent 5)") and up2 is not None:
                 import json as _json
                 with st.spinner("Agent 5 analyzing…"):
@@ -1082,6 +1186,7 @@ with tab9:
     st.header("✍️ Manuscript Writing — Agent 6")
     st.caption("Drafts use ONLY your evidence, approved analyses and protocols. "
                "Nothing is invented; every claim keeps its source link.")
+    task_link_banner()
     projects = api_get("/memory/projects") or []
     proj_opts = {p["name"]: p["id"] for p in projects}
     psel = st.selectbox("Project", list(proj_opts.keys()), key="wr_proj") \
@@ -1135,7 +1240,7 @@ with tab9:
 
     if psel:
         pid = proj_opts[psel]
-        st.subheader("Draft manuscript")
+        st.subheader("🔬 Draft manuscript (standalone exploration)")
         protos = api_get("/design/protocols", params={"project_id": pid}) or []
         popts = {"(none)": None, **{p["title"][:60]: p["id"] for p in protos}}
         psel2 = st.selectbox("Approved protocol (optional)", list(popts.keys()))
@@ -1185,7 +1290,8 @@ with tab9:
                              params={"approved": False})
                     st.rerun()
 
-        st.subheader("Advance pipeline")
+        st.subheader("🔗 Advance pipeline (task-linked)")
+        st.caption("Moves the active task forward. Runs here are linked to the task.")
         tasks_w = [t for t in (api_get("/supervisor/tasks") or [])
                    if t["status"] in ("needs_analysis_approval",
                                       "needs_manuscript_approval")]

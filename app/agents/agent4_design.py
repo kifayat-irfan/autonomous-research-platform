@@ -327,22 +327,13 @@ def propose_research_protocol(approved_gap_id: str, design_type: str,
     gap_text = gap.gap_statement
     unknown = gap.unknown_summary or gap_text
 
-    research_questions = [
-        f"RQ1: {unknown.rstrip('.')}?",
-        f"RQ2: Through which mechanism does the effect in RQ1 operate?",
-        "RQ3: For whom / under what conditions is the effect strongest?",
-    ]
-    hypotheses = [
-        "H1: The focal predictor is positively associated with the outcome "
-        "(directional, two-tailed test).",
-        "H2: The effect in H1 is mediated by the theorized mechanism.",
-        "H3: The effect is moderated by the specified boundary condition.",
-    ]
-
     construct_list = constructs or extract_constructs(
         gap_text, unknown,
         [e.get("title", "") for e in _loads(gap.supporting_evidence)],
         top_n=4) or ["focal construct"]
+    research_questions, hypotheses = _build_rqs_and_hypotheses(
+        gap_text, unknown, construct_list, design_type)
+
     measurement = construct_measurement_model(construct_list)
     sampling = generate_sampling_and_ethics_plan(
         target_population or "to be defined with the researcher",
@@ -393,6 +384,80 @@ def _loads(s: str | None) -> list:
         return json.loads(s or "[]")
     except (json.JSONDecodeError, TypeError):
         return []
+
+
+# ---------------------------------------------------------------------------
+# Research questions & hypotheses (LLM-enhanced, template fallback)
+# ---------------------------------------------------------------------------
+
+def _template_rqs_and_hypotheses(unknown: str) -> tuple:
+    return (
+        [
+            f"RQ1: {unknown.rstrip('.')}?",
+            "RQ2: Through which mechanism does the effect in RQ1 operate?",
+            "RQ3: For whom / under what conditions is the effect strongest?",
+        ],
+        [
+            "H1: The focal predictor is positively associated with the outcome "
+            "(directional, two-tailed test).",
+            "H2: The effect in H1 is mediated by the theorized mechanism.",
+            "H3: The effect is moderated by the specified boundary condition.",
+        ],
+    )
+
+
+def _llm_rqs_and_hypotheses(gap_text: str, unknown: str,
+                            constructs: List[str],
+                            design_type: str) -> tuple:
+    """Generate specific RQs + hypotheses via LLM. Raises LLMError on failure."""
+    from app.core.llm import complete
+    prompt = (
+        "You are a senior research methodologist. Draft research questions "
+        "and hypotheses for the study below.\n\n"
+        f"Research gap: {gap_text}\n"
+        f"What is unknown: {unknown}\n"
+        f"Key constructs: {', '.join(constructs)}\n"
+        f"Design: {design_type}\n\n"
+        "Return EXACTLY 6 lines, no extra text:\n"
+        "RQ1: <specific question naming the constructs>\n"
+        "RQ2: <mechanism question>\n"
+        "RQ3: <moderator/boundary question>\n"
+        "H1: <directional hypothesis>\n"
+        "H2: <mediation hypothesis>\n"
+        "H3: <moderation hypothesis>\n"
+        "Rules: name the actual constructs (not 'focal predictor'); keep each "
+        "to one sentence; no citations; no markdown."
+    )
+    text = complete(
+        prompt,
+        system="You draft precise, testable research questions and hypotheses. "
+               "You never invent citations or data.",
+        max_tokens=600, temperature=0.4)
+    rqs, hyps = [], []
+    for line in text.splitlines():
+        line = line.strip().lstrip("-*0123456789. ")
+        if line.upper().startswith("RQ"):
+            rqs.append(line if line.upper().startswith("RQ") else f"RQ: {line}")
+        elif line.upper().startswith("H"):
+            hyps.append(line if line[1:2].isdigit() else f"H: {line}")
+    if len(rqs) < 3 or len(hyps) < 3:
+        raise ValueError("LLM returned fewer than 3 RQs/hypotheses.")
+    return rqs[:3], hyps[:3]
+
+
+def _build_rqs_and_hypotheses(gap_text: str, unknown: str,
+                              constructs: List[str],
+                              design_type: str) -> tuple:
+    """LLM-generated RQs/hypotheses when configured; templates otherwise."""
+    from app.core import llm as _llm
+    if _llm.is_configured():
+        try:
+            return _llm_rqs_and_hypotheses(gap_text, unknown, constructs,
+                                           design_type)
+        except Exception as exc:
+            log.warning("LLM RQ generation failed (%s); using templates.",
+                        exc)
+    return _template_rqs_and_hypotheses(unknown)
 
 
 # ---------------------------------------------------------------------------

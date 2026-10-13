@@ -89,3 +89,23 @@ def verify_evidence(evidence_id: str, state: str = "verified",
         raise HTTPException(status_code=404, detail="Evidence not found")
     evidence_service.set_verification_state(db, ev, state)
     return EvidenceOut.model_validate(ev).model_dump()
+
+
+@router.post("/evidence/bulk-verify", response_model=dict)
+def bulk_verify_evidence(state: str = "verified",
+                         paper_id: str | None = None,
+                         project_id: str | None = None,
+                         only_state: str | None = None,
+                         db: Session = Depends(get_db)):
+    """Mark many evidence rows verified (or another state) at once.
+
+    By default only rows currently 'unverified' are touched, so already
+    rejected items are never silently flipped.
+    """
+    try:
+        n = evidence_service.bulk_set_verification_state(
+            db, state, paper_id=paper_id, project_id=project_id,
+            only_state=only_state or "unverified")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"updated": n, "state": state}

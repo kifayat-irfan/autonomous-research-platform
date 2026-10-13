@@ -50,6 +50,35 @@ def set_verification_state(db: Session, evidence: Evidence, state: str) -> Evide
     return evidence
 
 
+def bulk_set_verification_state(db: Session, state: str,
+                                paper_id: str | None = None,
+                                project_id: str | None = None,
+                                only_state: str | None = None) -> int:
+    """Mark many evidence rows at once. Returns the number updated.
+
+    Args:
+        state: target state (must be in VERIFICATION_STATES).
+        paper_id / project_id: scope the bulk update.
+        only_state: only rows currently in this state are updated
+            (e.g. only 'unverified' → 'verified', leaving already
+            'rejected' rows untouched).
+    """
+    if state not in VERIFICATION_STATES:
+        raise ValueError(f"Unknown verification state: {state!r}")
+    stmt = select(Evidence)
+    if paper_id:
+        stmt = stmt.where(Evidence.paper_id == paper_id)
+    if project_id:
+        stmt = stmt.where(Evidence.project_id == project_id)
+    if only_state:
+        stmt = stmt.where(Evidence.verification_state == only_state)
+    rows = list(db.scalars(stmt).all())
+    for ev in rows:
+        ev.verification_state = state
+    db.commit()
+    return len(rows)
+
+
 def count(db: Session, project_id: str | None = None) -> int:
     stmt = select(func.count(Evidence.id))
     if project_id:

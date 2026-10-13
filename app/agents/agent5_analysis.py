@@ -181,6 +181,76 @@ def _chi2(df, config, np, stats) -> Dict:
             "note": "Tests independence of categorical variables; not causation."}
 
 
+def _anova(df, config, np, stats) -> Dict:
+    g, v = config["group_col"], config["value_col"]
+    for col in (g, v):
+        if col not in df.columns:
+            raise ValueError(f"Column {col!r} not in dataset.")
+    d = df[[g, v]].dropna()
+    d[v] = pd_to_numeric(d[v])
+    d = d.dropna()
+    groups = [d.loc[d[g] == grp, v].values for grp in d[g].unique()]
+    if len(groups) < 2:
+        raise ValueError("ANOVA needs at least 2 groups.")
+    f, p = stats.f_oneway(*groups)
+    # eta-squared (effect size)
+    grand = d[v].mean()
+    ssb = sum(len(gr) * (gr.mean() - grand) ** 2 for gr in groups)
+    sst = ((d[v] - grand) ** 2).sum()
+    eta2 = float(ssb / sst) if sst else 0.0
+    return {"groups": [str(x) for x in d[g].unique()],
+            "n_per_group": [int(len(gr)) for gr in groups],
+            "means": [round(float(gr.mean()), 3) for gr in groups],
+            "F": round(float(f), 3), "p": float(p),
+            "eta_squared": round(eta2, 3),
+            "significant_05": bool(p < 0.05),
+            "note": "One-way ANOVA tests mean differences across groups; "
+                    "a significant p-value does not establish causation."}
+
+
+_OUTCOME_HINTS = ("acceptance", "intention", "satisfaction", "outcome",
+                  "dependent", "score", "willingness", "adoption")
+
+
+def _detect_outcome(num_cols: List[str]) -> str | None:
+    for col in num_cols:
+        cl = col.lower()
+        if any(h in cl for h in _OUTCOME_HINTS):
+            return col
+    return num_cols[-1] if num_cols else None
+
+
+def _full_suite(df, config, np, stats) -> Dict:
+    """One-click suite: descriptives + correlation matrix + OLS regression.
+
+    Outcome = config['outcome'] or auto-detected (name hints, else last
+    numeric column); predictors = remaining numeric columns.
+    """
+    num = df.select_dtypes(include=[np.number])
+    num_cols = [c for c in num.columns if c != "respondent_id"]
+    if len(num_cols) < 2:
+        raise ValueError("Full suite needs at least 2 numeric columns.")
+    outcome = config.get("outcome") or _detect_outcome(num_cols)
+    if outcome not in num_cols:
+        raise ValueError(f"Outcome column {outcome!r} not numeric/present.")
+    predictors = [c for c in num_cols if c != outcome]
+
+    desc = _descriptive(df, np)
+    corr = _correlation(df, {"cols": num_cols}, np, stats)
+    reg = _regression(df, {"outcome": outcome, "predictors": predictors},
+                      np, stats)
+    return {
+        "outcome": outcome,
+        "predictors": predictors,
+        "descriptive": desc,
+        "correlations": corr,
+        "regression": reg,
+        "note": ("Full suite: descriptives, pairwise correlations, and OLS "
+                 "regression. All associations — causal claims require a "
+                 "causal design and assumption checks."),
+    }
+
+
 def pd_crosstab(df, c1, c2):
     pd = _pd()
     return pd.crosstab(df[c1], df[c2])
@@ -248,17 +318,21 @@ def _regression(df, config, np, stats) -> Dict:
 _HANDLERS = {
     "descriptive": lambda df, cfg, np, stats: _descriptive(df, np),
     "ttest": _ttest,
+    "anova": _anova,
     "chi2": _chi2,
     "correlation": _correlation,
     "regression": _regression,
+    "full_suite": _full_suite,
 }
 
 _CONFIG_REQUIRED = {
     "descriptive": [],
     "ttest": ["group_col", "value_col"],
+    "anova": ["group_col", "value_col"],
     "chi2": ["col1", "col2"],
     "correlation": ["cols"],
     "regression": ["outcome", "predictors"],
+    "full_suite": [],
 }
 
 
@@ -314,6 +388,32 @@ def _render_script(analysis_type: str, config: Dict, clean_csv_path: str) -> str
             "y = d[CONFIG['outcome']].values",
             "beta, *_ = np.linalg.lstsq(X, y, rcond=None)",
             "for name, b in zip(['(Intercept)'] + CONFIG['predictors'], beta):",
+            "    print(f'{name}: {b:.4f}')",
+        ]
+    elif analysis_type == "anova":
+        lines += [
+            "g, v = CONFIG['group_col'], CONFIG['value_col']",
+            "d = df[[g, v]].dropna()",
+            "groups = [d.loc[d[g] == grp, v].astype(float).values "
+            "for grp in d[g].unique()]",
+            "f, p = stats.f_oneway(*groups)",
+            "print(f'groups={list(d[g].unique())} F={f:.4f} p={p:.4g}')",
+        ]
+    elif analysis_type == "full_suite":
+        lines += [
+            "num = df.select_dtypes(include=[np.number]).columns.tolist()",
+            "print(df[num].describe().to_string())",
+            "print(df[num].corr(method='pearson').to_string())",
+            "outcome = CONFIG.get('outcome') or num[-1]",
+            "preds = [c for c in num if c != outcome]",
+            "d = df[[outcome] + preds].apply(pd.to_numeric, "
+            "errors='coerce').dropna()",
+            "X = np.column_stack([np.ones(len(d))] + [d[c].values "
+            "for c in preds])",
+            "y = d[outcome].values",
+            "beta, *_ = np.linalg.lstsq(X, y, rcond=None)",
+            "print(f'outcome={outcome}')",
+            "for name, b in zip(['(Intercept)'] + preds, beta):",
             "    print(f'{name}: {b:.4f}')",
         ]
     lines.append("")

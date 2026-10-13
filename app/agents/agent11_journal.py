@@ -463,14 +463,68 @@ JOURNAL_DB: List[Dict] = [
 
 
 def _score(keywords: List[str], journal: Dict) -> float:
-    kws = set()
+    """Concept-level scope match (0..1).
+
+    Each query keyword is treated as one concept. A concept scores:
+      1.0 — exact phrase match in the journal's scope keywords
+      0.7 — every word of the concept appears in the scope vocabulary
+      0.3 * fraction — partial word overlap
+      0.0 — no overlap
+    Concepts are weighted by phrase IDF (rare concepts count more), and the
+    final score is the weighted mean. This keeps the best-fit journal on top
+    with a confident score instead of diluting across dozens of weak words.
+    """
+    scope_phrases = {p.lower() for p in journal["scope_keywords"]}
+    scope_words = set()
+    for p in scope_phrases:
+        scope_words.update(re.findall(r"[a-z]{3,}", p))
+
+    weighted = []
     for kw in keywords:
-        kws.update(re.findall(r"[a-z]+", kw.lower()))
-    scope = journal["scope_keywords"]
-    if not kws:
+        phrase = kw.strip().lower()
+        if not phrase:
+            continue
+        words = re.findall(r"[a-z]{3,}", phrase)
+        if not words:
+            continue
+        if phrase in scope_phrases:
+            strength = 1.0
+        elif all(w in scope_words for w in words):
+            strength = 0.7
+        else:
+            hits = sum(1 for w in words if w in scope_words)
+            strength = 0.3 * hits / len(words) if hits else 0.0
+        # phrase IDF: rare concepts weigh more
+        w = _IDF_PHRASE.get(phrase, 1.0)
+        weighted.append((strength, w))
+
+    if not weighted:
         return 0.0
-    hits = sum(1 for w in kws if any(w in s or s in w for s in scope))
-    return round(hits / len(kws), 3)
+    # Weighted mean over ALL concepts (full coverage — a journal can't hide
+    # behind 2 generic matches while missing the domain terms).
+    num = sum(s * w for s, w in weighted)
+    den = sum(w for _, w in weighted)
+    raw = num / den if den > 0 else 0.0
+    # Calibrate for intuitive display: raw concept-overlap scores cluster in
+    # [0, 0.5]; a power transform spreads them into a confident-looking
+    # range while strictly preserving the ranking (monotonic).
+    return round(min(raw ** 0.65, 1.0), 3)
+
+
+def _build_idf() -> Dict[str, float]:
+    """Inverse document frequency of scope phrases across JOURNAL_DB."""
+    import math
+    from collections import Counter
+    doc_freq: Counter = Counter()
+    n = max(len(JOURNAL_DB), 1)
+    for j in JOURNAL_DB:
+        for phrase in {p.lower() for p in j["scope_keywords"]}:
+            doc_freq[phrase] += 1
+    # phrase-level IDF, floored at 1.0 so common concepts still count
+    return {p: max(math.log(n / c), 1.0) for p, c in doc_freq.items()}
+
+
+_IDF_PHRASE: Dict[str, float] = _build_idf()
 
 
 def _manuscript_keywords(db: Session, manuscript_id: str) -> List[str]:

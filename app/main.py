@@ -15,6 +15,7 @@ from app.api import (
     gap_routes,
     intelligence_routes,
     journal_routes,
+    llm_routes,
     memory_routes,
     papers_routes,
     review_routes,
@@ -76,6 +77,7 @@ app.include_router(writing_routes.router, prefix="/api")
 app.include_router(review_routes.router, prefix="/api")
 app.include_router(journal_routes.router, prefix="/api")
 app.include_router(intelligence_routes.router, prefix="/api")
+app.include_router(llm_routes.router, prefix="/api")
 
 
 @app.get("/", tags=["root"])
