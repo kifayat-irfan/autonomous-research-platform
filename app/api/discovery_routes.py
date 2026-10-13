@@ -48,6 +48,20 @@ def get_papers(project_id: str | None = None,
     return [PaperOut.model_validate(r).model_dump() for r in rows]
 
 
+@router.get("/papers/{paper_id}/pdf")
+def get_paper_pdf(paper_id: str, db: Session = Depends(get_db)):
+    """Serve a paper's uploaded PDF so evidence links open the real document."""
+    from fastapi.responses import FileResponse
+    paper = paper_service.get_paper(db, paper_id)
+    if paper is None or not paper.pdf_path:
+        raise HTTPException(status_code=404, detail="PDF not found")
+    p = Path(paper.pdf_path)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="PDF file missing")
+    return FileResponse(str(p), media_type="application/pdf",
+                        filename=f"{paper_id}.pdf")
+
+
 @router.delete("/papers", response_model=dict)
 def clear_papers(project_id: str, db: Session = Depends(get_db)):
     """Delete ALL papers (PDFs + evidence) in a project. Destructive — confirm in UI."""

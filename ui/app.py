@@ -81,6 +81,32 @@ def source_link_md(label: str, url: str | None) -> str:
     return label
 
 
+def evidence_url(item: dict, paper_id: str | None = None) -> str | None:
+    """Resolve the best clickable URL for an evidence item.
+
+    Real http(s) source URLs win; otherwise fall back to serving the paper's
+    own PDF from the backend (with a #page fragment). Never returns a bare
+    relative pointer like 'source-unknown#page=8' — the browser would resolve
+    that against the Streamlit origin and just reopen the app.
+    """
+    for key in ("source_url", "source_pointer"):
+        url = (item.get(key) or "").strip()
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+    pid = item.get("paper_id") or paper_id
+    if pid:
+        u = api_url(f"/discovery/papers/{pid}/pdf")
+        if item.get("page_number"):
+            u += f"#page={item['page_number']}"
+        return u
+    return None
+
+
+def evidence_link_md(label: str, item: dict,
+                     paper_id: str | None = None) -> str:
+    return source_link_md(label, evidence_url(item, paper_id))
+
+
 def status_badge(status: str) -> str:
     colors = {
         "metadata_only": "gray", "oa_url_found": "blue",
@@ -455,12 +481,12 @@ with tab3:
                 if ext.get("objective"):
                     o = ext["objective"]
                     st.markdown(f"**🎯 Objective** (p. {o['page_number']}) — "
-                                f"{source_link_md('source', o['source_pointer'])}")
+                                f"{evidence_link_md('source', o, paper["id"])}")
                     st.write(o["text"])
                 if ext.get("methodology"):
                     m = ext["methodology"]
                     st.markdown(f"**🔬 Methodology** (p. {m['page_number']}) — "
-                                f"{source_link_md('source', m['source_pointer'])}")
+                                f"{evidence_link_md('source', m, paper["id"])}")
                     st.write(m["text"])
                 if ext.get("sample_size"):
                     st.markdown(f"**👥 Sample size:** `{ext['sample_size']}`")
@@ -469,11 +495,11 @@ with tab3:
                     with st.container(border=True):
                         st.write(f["claim_text"])
                         st.markdown(f"p. **{f['page_number']}** · "
-                                    f"{source_link_md('🔗 evidence link', f['source_pointer'])}")
+                                    f"{evidence_link_md('🔗 evidence link', f, paper["id"])}")
                 if ext.get("direct_quote"):
                     dq = ext["direct_quote"]
                     st.markdown(f"**💬 Direct quote** (p. {dq['page_number']}) — "
-                                f"{source_link_md('source', dq['source_pointer'])}")
+                                f"{evidence_link_md('source', dq, paper["id"])}")
                     st.markdown(f"> {dq["paragraph_quote"][:800]}")
                 st.caption(f"method: `{ext['extraction_method']}` · "
                            f"state: {status_badge(ext['verification_state'])} · "
@@ -492,8 +518,9 @@ with tab3:
                 st.markdown(meta)
                 if e.get("paragraph_quote"):
                     st.markdown(f"> {e["paragraph_quote"][:500]}")
-                if e.get("source_url"):
-                    st.link_button("🔗 Evidence link", e["source_url"])
+                eu = evidence_url(e, paper["id"])
+                if eu:
+                    st.link_button("📄 Open source PDF", eu)
                 if st.button("✔ Mark verified", key=f"ver_{e['id']}"):
                     api_post(f"/extraction/evidence/{e['id']}/verify",
                              params={"state": "verified"})
