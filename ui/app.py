@@ -170,9 +170,32 @@ with st.sidebar:
         if llm_s.get("configured"):
             st.success(f"🤖 LLM: active ({llm_s.get('model', '?')})")
         else:
-            st.caption("🤖 LLM: off — template mode. Set LLM_API_KEY to enable.")
+            st.caption("🤖 LLM: off — template mode.")
     except Exception:
-        pass
+        llm_s = {}
+    with st.expander("🤖 LLM settings"):
+        st.caption("Paste your API key once — it's saved to the gitignored "
+                   ".env and takes effect immediately (no restart). The key "
+                   "is never displayed back.")
+        _key = st.text_input("API key", type="password", key="llm_key",
+                             placeholder="sk-…")
+        _base = st.text_input("Base URL (optional)", key="llm_base",
+                              placeholder="https://token.sensenova.ai/v1")
+        _model = st.text_input("Model (optional)", key="llm_model",
+                               placeholder="sensenova-6.8-flash-lite")
+        if st.button("💾 Save LLM key", key="llm_save"):
+            if not _key or len(_key.strip()) < 8:
+                st.error("Please paste a valid API key.")
+            else:
+                r = api_post("/llm/configure",
+                             json={"api_key": _key.strip(),
+                                   "base_url": _base.strip() or None,
+                                   "model": _model.strip() or None})
+                if r and r.get("configured"):
+                    st.success("LLM active! " + r.get("message", ""))
+                    st.rerun()
+                else:
+                    st.error("Could not save the key — check the backend.")
 
 st.title("🔬 Autonomous Research Platform")
 st.caption("Phase 1 — Literature-bank MVP · every claim links to its source")
