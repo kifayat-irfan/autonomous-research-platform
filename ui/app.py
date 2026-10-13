@@ -281,13 +281,33 @@ with tab2:
         if not bank_pid:
             st.warning("Select a project first.")
         else:
+            mp_file = st.file_uploader(
+                "PDF file — details auto-fill on upload (you can edit them)",
+                type=["pdf"], key="mp_file")
+            # Auto-extract metadata when a NEW file is chosen.
+            if mp_file is not None and st.session_state.get("_mp_last_file") != (
+                    mp_file.name, mp_file.size):
+                with st.spinner("Reading PDF details…"):
+                    md = api_post(
+                        "/discovery/papers/extract-metadata",
+                        files={"file": (mp_file.name, mp_file.getvalue(),
+                                        "application/pdf")})
+                if md:
+                    st.session_state["mp_title"] = md.get("title", "")
+                    st.session_state["mp_authors"] = md.get("authors", "")
+                    st.session_state["mp_journal"] = md.get("journal", "")
+                    st.session_state["mp_year"] = md.get("year", "")
+                    st.session_state["mp_doi"] = md.get("doi", "")
+                    st.session_state["_mp_last_file"] = (mp_file.name,
+                                                         mp_file.size)
+                    st.success("Details filled from the PDF — review/edit below.")
+                    st.rerun()
             mp_title = st.text_input("Paper title", key="mp_title")
             mp_authors = st.text_input("Authors (comma-separated)", key="mp_authors")
             c1, c2 = st.columns(2)
             mp_journal = c1.text_input("Journal", key="mp_journal")
             mp_year = c2.text_input("Year", key="mp_year")
             mp_doi = st.text_input("DOI (optional)", key="mp_doi")
-            mp_file = st.file_uploader("PDF file", type=["pdf"], key="mp_file")
             if st.button("Add paper") and mp_title.strip() and mp_file is not None:
                 with st.spinner("Adding paper…"):
                     data = {"project_id": bank_pid, "title": mp_title.strip(),
@@ -301,6 +321,9 @@ with tab2:
                                                    "application/pdf")})
                 if res:
                     st.success(f"Added: {res['title'][:60]} — PDF ready.")
+                    for k in ("mp_title", "mp_authors", "mp_journal", "mp_year",
+                              "mp_doi", "mp_file", "_mp_last_file"):
+                        st.session_state.pop(k, None)
                     st.rerun()
     bank_papers = api_get("/discovery/papers",
                           params={"project_id": bank_pid} if bank_pid else {}) or []

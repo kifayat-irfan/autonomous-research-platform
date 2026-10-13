@@ -82,6 +82,28 @@ def download_oa_pdf(paper_id: str, db: Session = Depends(get_db)):
     return PaperOut.model_validate(paper)
 
 
+@router.post("/papers/extract-metadata", response_model=dict)
+def extract_paper_metadata(file: UploadFile = File(...)):
+    """Extract title/authors/journal/year/DOI from an uploaded PDF.
+
+    Used to pre-fill the manual-paper form; the user can edit everything.
+    """
+    from app.services import metadata_extraction
+    import tempfile, os
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only .pdf files are accepted")
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        shutil.copyfileobj(file.file, tmp)
+        tmp_path = tmp.name
+    try:
+        return metadata_extraction.extract_metadata(tmp_path)
+    except Exception as exc:
+        raise HTTPException(status_code=422,
+                            detail=f"Could not read PDF: {exc}") from exc
+    finally:
+        os.unlink(tmp_path)
+
+
 @router.post("/papers/manual", response_model=PaperOut)
 def add_paper_manual(
     project_id: str = Form(...),
