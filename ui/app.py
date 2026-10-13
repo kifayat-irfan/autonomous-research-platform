@@ -474,7 +474,7 @@ with tab3:
                     dq = ext["direct_quote"]
                     st.markdown(f"**💬 Direct quote** (p. {dq['page_number']}) — "
                                 f"{source_link_md('source', dq['source_pointer'])}")
-                    st.blockquote(dq["paragraph_quote"][:800])
+                    st.markdown(f"> {dq["paragraph_quote"][:800]}")
                 st.caption(f"method: `{ext['extraction_method']}` · "
                            f"state: {status_badge(ext['verification_state'])} · "
                            f"abstract-only entries are never treated as full-text evidence")
@@ -491,7 +491,7 @@ with tab3:
                     meta += f" · method: *{e['method'][:80]}*"
                 st.markdown(meta)
                 if e.get("paragraph_quote"):
-                    st.blockquote(e["paragraph_quote"][:500])
+                    st.markdown(f"> {e["paragraph_quote"][:500]}")
                 if e.get("source_url"):
                     st.link_button("🔗 Evidence link", e["source_url"])
                 if st.button("✔ Mark verified", key=f"ver_{e['id']}"):
@@ -876,7 +876,7 @@ with tab7:
                         if fl.get("found"):
                             st.caption(f"Found: {fl['found']}")
                         if fl.get("passage_text"):
-                            st.blockquote(fl["passage_text"][:400])
+                            st.markdown(f"> {fl["passage_text"][:400]}")
                         meta = f"p. **{fl.get('page_number', '?')}**"
                         if fl.get("source_link"):
                             st.markdown(f"{meta} · "
@@ -1343,7 +1343,7 @@ with tab11:
             with st.container(border=True):
                 st.markdown(f"**{r.get('reviewer') or 'Reviewer'}** · "
                             f"{status_badge(r['status'])}")
-                st.blockquote(r["comment"])
+                st.markdown(f"> {r["comment"]}")
                 resp = st.text_area("Your response", value=r.get("response", ""),
                                     key=f"rr_{r['id']}")
                 chg = st.text_area("Manuscript change", value=r.get("manuscript_change", ""),
