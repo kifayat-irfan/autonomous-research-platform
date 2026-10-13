@@ -254,6 +254,46 @@ with tab2:
                         st.success("PDF uploaded and linked.")
                         st.rerun()
 
+    # --- Project paper bank (includes task-discovered papers) ---
+    st.subheader("📚 Project papers")
+    bank_proj = st.selectbox("Show papers for project", list(proj_opts.keys()),
+                             key="bank_proj")
+    bank_pid = proj_opts[bank_proj]
+    bank_papers = api_get("/discovery/papers",
+                          params={"project_id": bank_pid} if bank_pid else {}) or []
+    if not bank_papers:
+        st.info("No papers in this project yet — run a search above or a "
+                "supervised task from the Tasks tab.")
+    for p in bank_papers:
+        with st.container(border=True):
+            st.markdown(f"### {source_link_md(p['title'], p['source_link'])}")
+            authors = ", ".join(p.get("authors") or [])
+            st.caption(f"{authors} — {p.get('journal') or ''} "
+                       f"({p.get('pub_year') or 'n/a'})")
+            st.markdown(f"{status_badge(p['status'])} · "
+                        f"source: `{p.get('source_api')}`")
+            c1, c2 = st.columns(2)
+            if not p.get("pdf_path"):
+                if c1.button("⬇ Try OA download", key=f"bdl_{p['id']}"):
+                    upd = api_post(f"/discovery/papers/{p['id']}/download")
+                    if upd:
+                        st.success(f"Status → {upd['status']}")
+                        st.rerun()
+            else:
+                c1.success(f"PDF ready: `{p['pdf_path'].split('/')[-1]}`")
+            up = c2.file_uploader("Manual PDF upload", type=["pdf"],
+                                  key=f"bup_{p['id']}")
+            if up is not None:
+                with st.spinner("Uploading…"):
+                    upd = api_post(
+                        f"/discovery/papers/{p['id']}/upload-pdf",
+                        files={"file": (up.name, up.getvalue(),
+                                        "application/pdf")},
+                    )
+                if upd:
+                    st.success("PDF uploaded and linked.")
+                    st.rerun()
+
 # ---------------------------------------------------------------------------
 # TAB 3 — Evidence Explorer (Agent 2)
 # ---------------------------------------------------------------------------

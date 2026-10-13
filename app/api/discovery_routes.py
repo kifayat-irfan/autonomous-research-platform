@@ -39,6 +39,15 @@ def search_papers(payload: DiscoveryRequest, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/papers", response_model=list[PaperOut])
+def get_papers(project_id: str | None = None,
+               status: str | None = None,
+               db: Session = Depends(get_db)):
+    """List papers in the bank, optionally filtered by project/status."""
+    rows = paper_service.list_papers(db, status=status, project_id=project_id)
+    return [PaperOut.model_validate(r).model_dump() for r in rows]
+
+
 @router.post("/papers/{paper_id}/download", response_model=PaperOut)
 def download_oa_pdf(paper_id: str, db: Session = Depends(get_db)):
     """(Re)attempt the legal OA PDF download for a paper."""
