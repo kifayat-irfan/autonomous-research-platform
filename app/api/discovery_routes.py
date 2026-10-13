@@ -2,7 +2,7 @@
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
 from app.agents.agent1_discovery import (
@@ -67,6 +67,52 @@ def download_oa_pdf(paper_id: str, db: Session = Depends(get_db)):
     return PaperOut.model_validate(paper)
 
 
+@router.post("/papers/manual", response_model=PaperOut)
+def add_paper_manual(
+    project_id: str = Form(...),
+    title: str = Form(...),
+    authors: str = Form(""),
+    journal: str = Form(""),
+    year: int | None = Form(None),
+    doi: str = Form(""),
+    source_link: str = Form(""),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Manually add a paper (e.g. the researcher's own publications) with its PDF.
+
+    Used to build a curated evidence base — e.g. training the agent on the
+    client's own papers. Deduplicates against existing records.
+    """
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only .pdf files are accepted")
+    paper = paper_service.upsert_paper(db, {
+        "doi": doi or None,
+        "title": title.strip(),
+        "authors": [a.strip() for a in authors.split(",") if a.strip()],
+        "journal": journal or None,
+        "year": year,
+        "source_api": "manual_upload",
+        "source_link": source_link or None,
+        "status": "needs_pdf_upload",
+    }, project_id=project_id)
+    _store_pdf_file(paper.id, file)
+    paper.pdf_path = str(Path(PDF_DIR) / f"{paper.id}.pdf")
+    paper_service.set_status(db, paper, "pdf_acquired")
+    return PaperOut.model_validate(paper)
+
+
+def _store_pdf_file(paper_id: str, file: UploadFile) -> None:
+    """Save an uploaded PDF after validating its magic bytes."""
+    dest = Path(PDF_DIR) / f"{paper_id}.pdf"
+    with open(dest, "wb") as out:
+        shutil.copyfileobj(file.file, out)
+    with open(dest, "rb") as f:
+        if not f.read(5).lstrip().startswith(b"%PDF"):
+            dest.unlink(missing_ok=True)
+            raise HTTPException(status_code=400, detail="Uploaded file is not a PDF")
+
+
 @router.post("/papers/{paper_id}/upload-pdf", response_model=PaperOut)
 def upload_pdf(paper_id: str, file: UploadFile = File(...),
                db: Session = Depends(get_db)):
@@ -79,17 +125,7 @@ def upload_pdf(paper_id: str, file: UploadFile = File(...),
         raise HTTPException(status_code=404, detail="Paper not found")
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only .pdf files are accepted")
-
-    dest = Path(PDF_DIR) / f"{paper_id}.pdf"
-    with open(dest, "wb") as out:
-        shutil.copyfileobj(file.file, out)
-
-    # Verify it is really a PDF (magic bytes).
-    with open(dest, "rb") as f:
-        if not f.read(5).lstrip().startswith(b"%PDF"):
-            dest.unlink(missing_ok=True)
-            raise HTTPException(status_code=400, detail="Uploaded file is not a PDF")
-
-    paper.pdf_path = str(dest)
+    _store_pdf_file(paper_id, file)
+    paper.pdf_path = str(Path(PDF_DIR) / f"{paper_id}.pdf")
     paper_service.set_status(db, paper, "pdf_acquired")
     return PaperOut.model_validate(paper)

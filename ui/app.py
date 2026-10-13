@@ -259,6 +259,31 @@ with tab2:
     bank_proj = st.selectbox("Show papers for project", list(proj_opts.keys()),
                              key="bank_proj")
     bank_pid = proj_opts[bank_proj]
+    with st.expander("➕ Add your own paper (e.g. client's publications)"):
+        if not bank_pid:
+            st.warning("Select a project first.")
+        else:
+            mp_title = st.text_input("Paper title", key="mp_title")
+            mp_authors = st.text_input("Authors (comma-separated)", key="mp_authors")
+            c1, c2 = st.columns(2)
+            mp_journal = c1.text_input("Journal", key="mp_journal")
+            mp_year = c2.text_input("Year", key="mp_year")
+            mp_doi = st.text_input("DOI (optional)", key="mp_doi")
+            mp_file = st.file_uploader("PDF file", type=["pdf"], key="mp_file")
+            if st.button("Add paper") and mp_title.strip() and mp_file is not None:
+                with st.spinner("Adding paper…"):
+                    data = {"project_id": bank_pid, "title": mp_title.strip(),
+                            "authors": mp_authors, "journal": mp_journal,
+                            "doi": mp_doi}
+                    if mp_year.strip().isdigit():
+                        data["year"] = int(mp_year.strip())
+                    res = api_post("/discovery/papers/manual", data=data,
+                                   files={"file": (mp_file.name,
+                                                   mp_file.getvalue(),
+                                                   "application/pdf")})
+                if res:
+                    st.success(f"Added: {res['title'][:60]} — PDF ready.")
+                    st.rerun()
     bank_papers = api_get("/discovery/papers",
                           params={"project_id": bank_pid} if bank_pid else {}) or []
     if not bank_papers:
