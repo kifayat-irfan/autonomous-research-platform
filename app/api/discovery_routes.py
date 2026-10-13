@@ -48,6 +48,21 @@ def get_papers(project_id: str | None = None,
     return [PaperOut.model_validate(r).model_dump() for r in rows]
 
 
+@router.delete("/papers", response_model=dict)
+def clear_papers(project_id: str, db: Session = Depends(get_db)):
+    """Delete ALL papers (PDFs + evidence) in a project. Destructive — confirm in UI."""
+    n = paper_service.clear_project_papers(db, project_id)
+    return {"deleted": n, "project_id": project_id}
+
+
+@router.delete("/papers/{paper_id}", response_model=dict)
+def delete_paper(paper_id: str, db: Session = Depends(get_db)):
+    """Delete one paper, its PDF file and its evidence items."""
+    if not paper_service.delete_paper(db, paper_id):
+        raise HTTPException(status_code=404, detail="Paper not found")
+    return {"deleted": paper_id}
+
+
 @router.post("/papers/{paper_id}/download", response_model=PaperOut)
 def download_oa_pdf(paper_id: str, db: Session = Depends(get_db)):
     """(Re)attempt the legal OA PDF download for a paper."""

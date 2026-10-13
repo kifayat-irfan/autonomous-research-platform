@@ -6,7 +6,7 @@ from datetime import date
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models.schemas import PAPER_STATUSES, Paper
+from app.models.schemas import PAPER_STATUSES, Evidence, Paper
 
 
 def normalize_doi(doi: str | None) -> str | None:
@@ -133,6 +133,36 @@ def set_status(db: Session, paper: Paper, status: str) -> Paper:
     db.commit()
     db.refresh(paper)
     return paper
+
+
+def delete_paper(db: Session, paper_id: str) -> bool:
+    """Delete a paper, its PDF file and its evidence items. Returns True if found."""
+    from pathlib import Path
+
+    paper = get_paper(db, paper_id)
+    if paper is None:
+        return False
+    if paper.pdf_path:
+        try:
+            Path(paper.pdf_path).unlink(missing_ok=True)
+        except OSError:
+            pass
+    # Remove evidence anchored to this paper first (FK is non-nullable).
+    for ev in db.scalars(select(Evidence).where(Evidence.paper_id == paper_id)).all():
+        db.delete(ev)
+    db.delete(paper)
+    db.commit()
+    return True
+
+
+def clear_project_papers(db: Session, project_id: str) -> int:
+    """Delete ALL papers (and their PDFs/evidence) in a project. Returns count."""
+    papers = list_papers(db, project_id=project_id, limit=10000)
+    n = 0
+    for p in papers:
+        if delete_paper(db, p.id):
+            n += 1
+    return n
 
 
 def stats(db: Session) -> dict:

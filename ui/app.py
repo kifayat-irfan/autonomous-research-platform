@@ -37,6 +37,24 @@ def api_get(path: str, params: dict | None = None):
         return None
 
 
+def api_delete(path: str, params: dict | None = None):
+    try:
+        r = requests.delete(api_url(path), params=params, timeout=120)
+        r.raise_for_status()
+        return r.json()
+    except requests.HTTPError as exc:
+        detail = ""
+        try:
+            detail = exc.response.json().get("detail", "")
+        except Exception:
+            detail = exc.response.text[:300]
+        st.error(f"Backend DELETE {path} failed ({exc.response.status_code}): {detail}")
+        return None
+    except Exception as exc:
+        st.error(f"Backend DELETE {path} failed: {exc}")
+        return None
+
+
 def api_post(path: str, json: dict | None = None, files: dict | None = None,
              params: dict | None = None, data: dict | None = None):
     try:
@@ -289,6 +307,20 @@ with tab2:
     if not bank_papers:
         st.info("No papers in this project yet — run a search above or a "
                 "supervised task from the Tasks tab.")
+    else:
+        with st.expander(f"🗑 Delete papers ({len(bank_papers)} in this project)"):
+            st.warning("This permanently deletes the papers, their PDFs and "
+                       "their evidence items. This cannot be undone.")
+            confirm = st.checkbox("Yes, I understand — delete them all",
+                                  key="bank_del_confirm")
+            if st.button("Delete all project papers", key="bank_del_all",
+                         disabled=not (confirm and bank_pid)):
+                with st.spinner("Deleting…"):
+                    res = api_delete(f"/discovery/papers",
+                                     params={"project_id": bank_pid})
+                if res:
+                    st.success(f"Deleted {res['deleted']} papers.")
+                    st.rerun()
     for p in bank_papers:
         with st.container(border=True):
             st.markdown(f"### {source_link_md(p['title'], p['source_link'])}")
@@ -297,7 +329,7 @@ with tab2:
                        f"({p.get('pub_year') or 'n/a'})")
             st.markdown(f"{status_badge(p['status'])} · "
                         f"source: `{p.get('source_api')}`")
-            c1, c2 = st.columns(2)
+            c1, c2, c3 = st.columns([1, 1, 0.6])
             if not p.get("pdf_path"):
                 if c1.button("⬇ Try OA download", key=f"bdl_{p['id']}"):
                     upd = api_post(f"/discovery/papers/{p['id']}/download")
@@ -317,6 +349,10 @@ with tab2:
                     )
                 if upd:
                     st.success("PDF uploaded and linked.")
+                    st.rerun()
+            if c3.button("🗑", key=f"bdel_{p['id']}", help="Delete this paper"):
+                if api_delete(f"/discovery/papers/{p['id']}"):
+                    st.success("Paper deleted.")
                     st.rerun()
 
 # ---------------------------------------------------------------------------
