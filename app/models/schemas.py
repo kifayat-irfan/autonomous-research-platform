@@ -943,6 +943,14 @@ class ProtocolCreateRequest(BaseModel):
     constructs: list[str] | None = None
 
 
+class ProtocolRegenerateRequest(BaseModel):
+    constructs: list[str] | None = None
+    design_type: str | None = None
+    target_population: str | None = None
+    sample_size_needed: int | None = None
+    note: str = ""
+
+
 class ProtocolOut(_Out):
     id: str
     project_id: str

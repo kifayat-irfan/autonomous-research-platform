@@ -8,6 +8,7 @@ from app.models.schemas import (
     MeasurementModelRequest,
     ProtocolCreateRequest,
     ProtocolOut,
+    ProtocolRegenerateRequest,
     ProtocolReviewRequest,
 )
 
@@ -58,6 +59,28 @@ def review_protocol(protocol_id: str, payload: ProtocolReviewRequest,
         raise HTTPException(status_code=400, detail=str(exc))
     proto = agent4.get_protocol_dict(p.id, db)
     return ProtocolOut.model_validate(proto).model_dump()
+
+
+@router.post("/protocols/{protocol_id}/regenerate", response_model=ProtocolOut)
+def regenerate_protocol(protocol_id: str, payload: ProtocolRegenerateRequest,
+                        db: Session = Depends(get_db)):
+    """Rebuild a weak/rejected protocol without restarting the pipeline.
+
+    Creates a new pending protocol for the same gap; the old row is marked
+    'superseded' (never deleted — revision history is preserved).
+    """
+    try:
+        new_proto = agent4.regenerate_protocol(
+            db, protocol_id,
+            constructs=payload.constructs,
+            design_type=payload.design_type,
+            target_population=payload.target_population,
+            sample_size_needed=payload.sample_size_needed,
+            note=payload.note,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return ProtocolOut.model_validate(new_proto).model_dump()
 
 
 @router.post("/measurement-model", response_model=list[dict])

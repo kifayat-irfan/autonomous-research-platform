@@ -841,6 +841,35 @@ with tab6:
                         api_post(f"/design/protocols/{p['id']}/review",
                                  json={"approved": False, "note": note})
                         st.rerun()
+                if p["approval_status"] in ("pending", "rejected", "approved"):
+                    with st.expander("🔄 Regenerate protocol"):
+                        st.caption("Rebuild this protocol without restarting the "
+                                   "pipeline. The old version is kept as "
+                                   "'superseded' — never deleted.")
+                        rcon = st.text_input(
+                            "Constructs (comma-separated, optional)",
+                            key=f"rgc_{p['id']}",
+                            placeholder="Leave blank to re-extract from evidence, "
+                                        "e.g. trust, perceived risk, acceptance")
+                        rdes = st.selectbox(
+                            "Design type", ["mixed_methods", "survey",
+                                            "experimental", "observational"],
+                            index=["mixed_methods", "survey", "experimental",
+                                   "observational"].index(p["design_type"])
+                            if p["design_type"] in ["mixed_methods", "survey",
+                                                    "experimental",
+                                                    "observational"] else 0,
+                            key=f"rgd_{p['id']}")
+                        if st.button("🔄 Regenerate", key=f"rgen_{p['id']}"):
+                            constructs = ([c.strip() for c in rcon.split(",")
+                                           if c.strip()] or None)
+                            with st.spinner("Agent 4 regenerating…"):
+                                api_post(
+                                    f"/design/protocols/{p['id']}/regenerate",
+                                    json={"constructs": constructs,
+                                          "design_type": rdes,
+                                          "note": note})
+                            st.rerun()
 
         st.subheader("Advance pipeline")
         tasks_p = [t for t in (api_get("/supervisor/tasks") or [])

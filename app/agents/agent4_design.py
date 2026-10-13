@@ -339,7 +339,10 @@ def propose_research_protocol(approved_gap_id: str, design_type: str,
         "H3: The effect is moderated by the specified boundary condition.",
     ]
 
-    construct_list = constructs or _keywords(gap_text, top_n=4) or ["focal construct"]
+    construct_list = constructs or extract_constructs(
+        gap_text, unknown,
+        [e.get("title", "") for e in _loads(gap.supporting_evidence)],
+        top_n=4) or ["focal construct"]
     measurement = construct_measurement_model(construct_list)
     sampling = generate_sampling_and_ethics_plan(
         target_population or "to be defined with the researcher",
@@ -392,13 +395,73 @@ def _loads(s: str | None) -> list:
         return []
 
 
-def _keywords(text: str, top_n: int = 4) -> List[str]:
-    import re as _re
-    from collections import Counter as _C
-    stop = {"the", "and", "with", "from", "that", "this", "which", "studies",
-            "study", "evidence", "research"}
-    toks = _re.findall(r"[a-z]{4,}", (text or "").lower())
-    return [w for w, _ in _C(t for t in toks if t not in stop).most_common(top_n)]
+# ---------------------------------------------------------------------------
+# Evidence-grounded construct extraction
+# ---------------------------------------------------------------------------
+# Canonical research constructs mapped to the words/phrases that signal them
+# in a gap statement or supporting evidence. Derived from the validated scale
+# library's keyword sets plus common constructs from the literature.
+# Constructs with no validated scale on file still surface here — the
+# measurement model marks them "proposed / unvalidated", never "validated".
+CONSTRUCT_VOCABULARY: Dict[str, List[str]] = {
+    "trust": ["trust", "trusting", "trustworthiness", "distrust", "reliance",
+              "trust in automation"],
+    "technology acceptance": ["technology acceptance", "acceptance",
+                              "adoption", "adopt", "uptake"],
+    "behavioral intention": ["behavioral intention", "intention to use",
+                             "intentions", "intention", "willingness"],
+    "perceived usefulness": ["perceived usefulness", "usefulness"],
+    "perceived ease of use": ["perceived ease of use", "ease of use"],
+    "perceived risk": ["perceived risk", "risk perception", "risks", "risk",
+                       "risky", "safety concern"],
+    "performance expectancy": ["performance expectancy"],
+    "effort expectancy": ["effort expectancy"],
+    "social influence": ["social influence", "subjective norm",
+                         "social norms"],
+    "satisfaction": ["satisfaction", "system usability", "usability"],
+    "workload": ["workload", "cognitive load", "mental demand", "task load"],
+    "affect": ["affect", "emotion", "emotions", "mood", "wellbeing",
+               "well-being"],
+    "personality": ["personality", "big five", "openness",
+                    "conscientiousness", "extraversion", "agreeableness",
+                    "neuroticism"],
+}
+
+
+def extract_constructs(gap_text: str | None,
+                       unknown_summary: str | None = None,
+                       evidence_titles: List[str] | None = None,
+                       top_n: int = 4) -> List[str]:
+    """Derive research constructs from the approved gap + supporting evidence.
+
+    Mines the gap statement, the unknown summary, and the titles of the
+    supporting evidence for vocabulary triggers, ranking constructs by hit
+    count. Only canonical constructs from CONSTRUCT_VOCABULARY can surface —
+    raw word-frequency fragments (the old _keywords fallback) are never
+    returned. Returns [] when nothing matches; the caller then falls back to
+    the honest placeholder "focal construct".
+    """
+    corpus = " ".join(
+        [gap_text or "", unknown_summary or ""] + list(evidence_titles or [])
+    ).lower()
+    if not corpus.strip():
+        return []
+    words = set(re.findall(r"[a-z][a-z\-]+", corpus))
+
+    scored: List[tuple] = []
+    for construct, triggers in CONSTRUCT_VOCABULARY.items():
+        hits = 0
+        for trig in triggers:
+            trig = trig.lower()
+            if " " in trig or "-" in trig:
+                if trig in corpus:
+                    hits += 1
+            elif trig in words:
+                hits += 1
+        if hits:
+            scored.append((hits, construct))
+    scored.sort(key=lambda s: (-s[0], s[1]))
+    return [c for _, c in scored[:top_n]]
 
 
 def get_protocol(db: Session, protocol_id: str) -> ResearchProtocol | None:
@@ -456,3 +519,51 @@ def review_protocol(db: Session, protocol_id: str, approved: bool,
     db.commit()
     db.refresh(p)
     return p
+
+
+def regenerate_protocol(db: Session, protocol_id: str,
+                        constructs: List[str] | None = None,
+                        design_type: str | None = None,
+                        target_population: str | None = None,
+                        sample_size_needed: int | None = None,
+                        note: str = "") -> Dict:
+    """Rebuild a weak or rejected protocol without restarting the pipeline.
+
+    Creates a NEW protocol row for the same gap (same task/project) and marks
+    the old row 'superseded' — never deleted, so the full revision history
+    stays in the provenance log. The new protocol starts as 'pending' and
+    goes through the normal researcher approval gate.
+
+    Args:
+        constructs: explicit construct list; None re-runs the
+            evidence-grounded extraction (picks up the vocabulary fix).
+    """
+    old = get_protocol(db, protocol_id)
+    if old is None:
+        raise ValueError(f"Unknown protocol_id: {protocol_id}")
+    gap = db.get(GapBrief, old.gap_id)
+    if gap is None:
+        raise ValueError(f"Original gap {old.gap_id[:8]} no longer exists.")
+    if gap.researcher_decision != "approved":
+        raise ValueError(
+            "Cannot regenerate: the original gap is no longer "
+            f"researcher-approved (decision={gap.researcher_decision!r}).")
+
+    new = propose_research_protocol(
+        old.gap_id, design_type or old.design_type, db,
+        task_id=old.task_id,
+        target_population=target_population,
+        sample_size_needed=sample_size_needed,
+        constructs=constructs,
+    )
+    old.approval_status = "superseded"
+    link_note = f"Superseded by protocol {new['id'][:8]}"
+    if note:
+        link_note += f": {note}"
+    old.researcher_note = ((old.researcher_note or "") + " | " + link_note
+                           ).strip(" |")
+    db.commit()
+    db.refresh(old)
+    log.info("Protocol %s regenerated as %s (old marked superseded)",
+             old.id[:8], new["id"][:8])
+    return new
