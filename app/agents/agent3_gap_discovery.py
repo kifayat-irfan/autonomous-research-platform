@@ -250,6 +250,85 @@ def analyze_evidence_matrix_for_gaps(project_id: str, db: Session,
 
 
 # ---------------------------------------------------------------------------
+# 1b. LLM sharpening (Round 3 fix: smarter gap discovery)
+# ---------------------------------------------------------------------------
+
+def _llm_sharpen_gap(gap_statement: str, known: str, unknown: str,
+                     gap_type: str) -> tuple:
+    """Sharpen one heuristic gap candidate via LLM. Raises on any failure.
+
+    Strict rules: same gap type, same mechanism, no invented studies,
+    data, or citations. Returns (statement, unknown) — exactly 2 lines.
+    """
+    from app.core.llm import complete
+    prompt = (
+        "You are a senior researcher. Rewrite the draft research gap below "
+        "to be sharper and more specific, WITHOUT changing its meaning, "
+        "gap type, or causal mechanism.\n\n"
+        f"Gap type: {gap_type}\n"
+        f"Draft gap: {gap_statement}\n"
+        f"What is known: {known}\n"
+        f"What is unknown: {unknown}\n\n"
+        "Return EXACTLY 2 lines, no extra text:\n"
+        "STATEMENT: <one-sentence sharpened gap>\n"
+        "UNKNOWN: <one-sentence sharpened unknown>\n"
+        "Rules: name the actual variables/mechanism; never invent studies, "
+        "numbers, or citations; no markdown; keep it to one sentence each."
+    )
+    text = complete(
+        prompt,
+        system="You sharpen research-gap wording precisely. You never invent "
+               "studies, data, or citations.",
+        max_tokens=400, temperature=0.3)
+    stmt, unk = None, None
+    for line in text.splitlines():
+        line = line.strip().lstrip("-*0123456789. ")
+        if line.upper().startswith("STATEMENT:"):
+            stmt = line.split(":", 1)[1].strip()
+        elif line.upper().startswith("UNKNOWN:"):
+            unk = line.split(":", 1)[1].strip()
+    if not stmt or not unk:
+        raise ValueError("LLM did not return STATEMENT + UNKNOWN lines.")
+    return stmt, unk
+
+
+def _sharpen_candidates(candidates: List[Dict]) -> List[Dict]:
+    """LLM-sharpen heuristic candidates when configured; else unchanged.
+
+    Every sharpened candidate is re-checked against compulsory rule 1 —
+    a sharpened gap that loses its mechanism is dropped, never emitted.
+    Any LLM failure falls back to the original heuristic wording.
+    """
+    from app.core import llm as _llm
+    if not _llm.is_configured():
+        return candidates
+    out: List[Dict] = []
+    for c in candidates:
+        try:
+            stmt, unk = _llm_sharpen_gap(
+                c["gap_statement"], c.get("known_summary", ""),
+                c.get("unknown_summary", ""), c["gap_type"])
+            # Re-check rule 1 on the SHARPENED wording itself (not on a
+            # context that artificially contains the word "mechanism").
+            reason = _is_banned_novelty(stmt, c["gap_type"],
+                                        f"{stmt} {unk}")
+            if reason:
+                # Safe fallback: keep the original heuristic wording, which
+                # already passed rule 1 — never emit a mechanism-free gap.
+                log.info("Sharpened gap rejected by rule 1 (%s); keeping "
+                         "heuristic wording.", reason)
+                out.append(c)
+                continue
+            c = dict(c, gap_statement=stmt, unknown_summary=unk)
+            log.info("Gap sharpened by LLM (%s).", c["gap_type"])
+        except Exception as exc:
+            log.warning("LLM gap sharpening failed (%s); keeping heuristic "
+                        "wording.", exc)
+        out.append(c)
+    return out
+
+
+# ---------------------------------------------------------------------------
 # 2. Novelty-challenge counter-search (tries to DISPROVE the gap)
 # ---------------------------------------------------------------------------
 
@@ -326,9 +405,10 @@ def execute_novelty_challenge_search(gap_claim: str, db: Session | None = None,
 def run_gap_discovery(project_id: str, db: Session,
                       task_id: str | None = None,
                       max_gaps: int = 5) -> List[Dict]:
-    """Full Agent 3 run: analyze -> challenge each candidate -> persist."""
+    """Full Agent 3 run: analyze -> LLM-sharpen -> challenge -> persist."""
     candidates = analyze_evidence_matrix_for_gaps(
         project_id, db, task_id=task_id, max_gaps=max_gaps)
+    candidates = _sharpen_candidates(candidates)
     briefs = []
     for c in candidates:
         challenge = execute_novelty_challenge_search(c["gap_statement"], db)

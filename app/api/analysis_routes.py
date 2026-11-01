@@ -45,6 +45,33 @@ def create_run(project_id: str = Form(...),
     return AnalysisRunOut.model_validate(run).model_dump()
 
 
+@router.post("/coding-dataset")
+def build_coding_dataset(project_id: str = Form(...),
+                         db: Session = Depends(get_db)):
+    """Auto-build an evidence-coding dataset CSV from Agent 2 output.
+
+    One row per extracted evidence item — no hand-built CSV needed to
+    start an analysis. This is a coding dataset, NOT respondent data.
+    """
+    try:
+        return agent5.build_evidence_coding_dataset(project_id, db)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.get("/coding-dataset/{project_id}")
+def download_coding_dataset(project_id: str):
+    """Download the built evidence-coding dataset CSV for a project."""
+    from fastapi.responses import FileResponse
+    path = DATA_DIR / "analysis" / f"evidence_coding_{project_id[:8]}.csv"
+    if not path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="No coding dataset built yet — POST /analysis/coding-dataset first")
+    return FileResponse(path, media_type="text/csv",
+                        filename=path.name)
+
+
 @router.get("/runs", response_model=list[AnalysisRunOut])
 def list_runs(project_id: str | None = None, task_id: str | None = None,
               limit: int = 100, db: Session = Depends(get_db)):

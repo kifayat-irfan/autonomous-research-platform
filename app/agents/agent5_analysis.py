@@ -129,6 +129,64 @@ def clean_dataset(csv_path: str, run_id: str) -> Dict:
 
 
 # ---------------------------------------------------------------------------
+# 1b. Auto evidence-coding dataset builder (Round 3 fix)
+# ---------------------------------------------------------------------------
+
+def build_evidence_coding_dataset(project_id: str, db: Session) -> Dict:
+    """Build a coding dataset CSV from the project's extracted evidence.
+
+    HONEST SCOPE: one row per extracted evidence item — paper, claim,
+    objective, method, sample size, verification state. This is a coding
+    dataset for meta-analysis-style summaries (e.g. counts by method or
+    journal), NOT respondent-level data and NOT fabricated: every row
+    traces to an Evidence row + its Paper. If the researcher needs
+    respondent-level statistics, they still upload their own CSV.
+    Returns path, row count, columns, and the scope note.
+    """
+    from app.models.schemas import Evidence, Paper
+
+    pd = _pd()
+    evidence = db.scalars(
+        select(Evidence).where(Evidence.project_id == project_id)
+    ).all()
+    if not evidence:
+        raise ValueError(
+            f"No extracted evidence for project {project_id} — run Agent 2 "
+            "first, then rebuild.")
+    papers = {p.id: p for p in db.scalars(
+        select(Paper).where(Paper.project_id == project_id)).all()}
+
+    rows = []
+    for ev in evidence:
+        p = papers.get(ev.paper_id)
+        rows.append({
+            "paper_title": p.title if p else "(unknown paper)",
+            "journal": p.journal if p else None,
+            "year": p.pub_date.year if p and p.pub_date else None,
+            "claim_text": ev.claim_text,
+            "objective": ev.objective,
+            "method": ev.method,
+            "sample_size": ev.sample_size,
+            "page_number": ev.page_number,
+            "verification_state": ev.verification_state,
+        })
+    df = pd.DataFrame(rows)
+    ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
+    path = ANALYSIS_DIR / f"evidence_coding_{project_id[:8]}.csv"
+    df.to_csv(path, index=False)
+    log.info("Built evidence-coding dataset: %s rows -> %s",
+             len(df), path)
+    return {
+        "path": str(path),
+        "n_rows": int(len(df)),
+        "columns": list(df.columns),
+        "note": ("Coding dataset: one row per extracted evidence item. "
+                 "NOT respondent-level data; every row traces to an "
+                 "Evidence row + its Paper."),
+    }
+
+
+# ---------------------------------------------------------------------------
 # 2. Statistical execution
 # ---------------------------------------------------------------------------
 
