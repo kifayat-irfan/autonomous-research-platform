@@ -8,6 +8,11 @@ Configuration via environment variables:
   LLM_TIMEOUT   — request timeout in seconds (default 90)
   LLM_MAX_TOKENS — default 1500
 
+On import, a gitignored .env at the repo root is loaded (never
+overwriting variables already in the environment): the /llm/configure
+endpoint writes the key there, so a saved key survives backend restarts
+instead of silently dropping the LLM into template mode.
+
 Design rules:
   - The platform NEVER fails just because the LLM is unavailable.
     is_configured() gates every call; complete() raises LLMError on
@@ -16,11 +21,42 @@ Design rules:
 """
 import logging
 import os
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://token.sensenova.ai/v1"
 DEFAULT_MODEL = "sensenova-6.8-flash-lite"
+
+
+def _load_dotenv(path: Path | None = None) -> None:
+    """Minimal .env loader (no third-party dependency).
+
+    The /llm/configure endpoint writes the key to the gitignored .env, but
+    nothing ever read it back — every backend restart lost the key and the
+    LLM silently fell back to template mode (observed 2026-11-15). Load it
+    once at import so restarts keep the key. Never overwrites variables
+    already present in the environment.
+    """
+    env_path = path or Path(__file__).resolve().parents[2] / ".env"
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv()
 
 
 class LLMError(Exception):

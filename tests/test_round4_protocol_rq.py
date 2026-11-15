@@ -225,6 +225,37 @@ def test_extract_constructs_mines_research_question():
 
 
 # ---------------------------------------------------------------------------
+# 6. .env is loaded at import so a saved key survives backend restarts
+# ---------------------------------------------------------------------------
+
+def test_load_dotenv_sets_missing_key(monkeypatch, tmp_path):
+    import os
+
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "# comment\nLLM_API_KEY=sk-test-123\nLLM_MODEL=test-model\n")
+    llm_mod._load_dotenv(env_file)
+    assert os.environ["LLM_API_KEY"] == "sk-test-123"
+    assert os.environ["LLM_MODEL"] == "test-model"
+
+
+def test_load_dotenv_never_overwrites(monkeypatch, tmp_path):
+    import os
+
+    monkeypatch.setenv("LLM_API_KEY", "keep-me")
+    env_file = tmp_path / ".env"
+    env_file.write_text("LLM_API_KEY=sk-other\n")
+    llm_mod._load_dotenv(env_file)
+    assert os.environ["LLM_API_KEY"] == "keep-me"
+
+
+def test_load_dotenv_missing_file_is_noop(tmp_path):
+    llm_mod._load_dotenv(tmp_path / ".env")  # must not raise
+
+
+# ---------------------------------------------------------------------------
 # 5. End-to-end protocol: topic-anchored RQs, no "(None)" citations
 # ---------------------------------------------------------------------------
 
