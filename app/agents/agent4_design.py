@@ -20,7 +20,7 @@ from typing import Dict, List
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.schemas import DESIGN_TYPES, GapBrief, ResearchProtocol
+from app.models.schemas import DESIGN_TYPES, GapBrief, ResearchProtocol, Task
 
 log = logging.getLogger(__name__)
 
@@ -327,23 +327,42 @@ def propose_research_protocol(approved_gap_id: str, design_type: str,
     gap_text = gap.gap_statement
     unknown = gap.unknown_summary or gap_text
 
+    # Domain anchor: the task's research question. Without it the LLM prompt
+    # carries no topic — live failure 2026-11-15: with empty constructs the
+    # model drifted to a textbook example (perceived organizational support
+    # -> employee engagement) for an AV-trust project. The question also
+    # feeds construct mining ("Trust and acceptance ..." yields trust +
+    # technology acceptance).
+    topic = None
+    for tid in (task_id, gap.task_id):
+        if tid:
+            task = db.get(Task, tid)
+            if task is not None and task.query:
+                topic = task.query
+                break
+
     construct_list = constructs or extract_constructs(
         gap_text, unknown,
         [e.get("title", "") for e in _loads(gap.supporting_evidence)],
-        top_n=4) or ["focal construct"]
+        top_n=4, extra_text=topic) or ["focal construct"]
     research_questions, hypotheses = _build_rqs_and_hypotheses(
-        gap_text, unknown, construct_list, design_type)
+        gap_text, unknown, construct_list, design_type, topic=topic)
 
     measurement = construct_measurement_model(construct_list)
     sampling = generate_sampling_and_ethics_plan(
         target_population or "to be defined with the researcher",
         sample_size_needed, design_type)
 
+    def _cite(evidence_item):
+        title = (evidence_item.get("title") or "Untitled")[:60]
+        link = evidence_item.get("source_link")
+        return f"{title} ({link})" if link else title
+
     sections = {
         "background": (f"This protocol addresses the approved gap: {gap_text} "
                        f"Supporting evidence: "
                        + "; ".join(
-                           f"{e.get('title', '')[:60]} ({e.get('source_link')})"
+                           _cite(e)
                            for e in _loads(gap.supporting_evidence)[:3])),
         "design_overview": f"{template['label']} targeting the gap above.",
         "population_and_sampling": sampling["recruitment"],
@@ -390,7 +409,58 @@ def _loads(s: str | None) -> list:
 # Research questions & hypotheses (LLM-enhanced, template fallback)
 # ---------------------------------------------------------------------------
 
-def _template_rqs_and_hypotheses(unknown: str) -> tuple:
+def _template_rqs_and_hypotheses(unknown: str,
+                                 constructs: List[str] | None = None) -> tuple:
+    """Deterministic fallback RQs/hypotheses.
+
+    Names the real constructs when given (never the 'focal predictor'
+    placeholder) — the old version never received constructs at all, so a
+    failed LLM call produced RQs naming no variable (live 2026-11-15).
+    With no usable constructs it keeps the generic wording.
+    """
+    names = [c for c in (constructs or [])
+             if c and c != "focal construct"]
+    if len(names) >= 2:
+        predictor, outcome = names[0], names[-1]
+        mediator = names[1] if len(names) > 2 else None
+        moderator = names[2] if len(names) > 3 else None
+        cap = lambda s: s[:1].upper() + s[1:]
+        return (
+            [
+                f"RQ1: Does {predictor} predict {outcome}?",
+                f"RQ2: Through which mechanism does {predictor} influence "
+                f"{outcome}?",
+                f"RQ3: For whom / under what conditions is the "
+                f"{predictor}–{outcome} relationship strongest?",
+            ],
+            [
+                f"H1: {cap(predictor)} is positively associated with "
+                f"{outcome}.",
+                (f"H2: The effect of {predictor} on {outcome} is mediated "
+                 f"by {mediator}." if mediator else
+                 "H2: The effect in H1 is mediated by the theorized "
+                 "mechanism."),
+                (f"H3: {cap(moderator)} moderates the relationship between "
+                 f"{predictor} and {outcome}." if moderator else
+                 "H3: The effect is moderated by the specified boundary "
+                 "condition."),
+            ],
+        )
+    if len(names) == 1:
+        cap = lambda s: s[:1].upper() + s[1:]
+        return (
+            [
+                f"RQ1: How does {names[0]} shape the outcome of interest?",
+                "RQ2: Through which mechanism does the effect in RQ1 operate?",
+                "RQ3: For whom / under what conditions is the effect strongest?",
+            ],
+            [
+                f"H1: {cap(names[0])} is positively associated with the "
+                "outcome (directional, two-tailed test).",
+                "H2: The effect in H1 is mediated by the theorized mechanism.",
+                "H3: The effect is moderated by the specified boundary condition.",
+            ],
+        )
     return (
         [
             f"RQ1: {unknown.rstrip('.')}?",
@@ -408,12 +478,22 @@ def _template_rqs_and_hypotheses(unknown: str) -> tuple:
 
 def _llm_rqs_and_hypotheses(gap_text: str, unknown: str,
                             constructs: List[str],
-                            design_type: str) -> tuple:
-    """Generate specific RQs + hypotheses via LLM. Raises LLMError on failure."""
+                            design_type: str,
+                            topic: str | None = None) -> tuple:
+    """Generate specific RQs + hypotheses via LLM. Raises LLMError on failure.
+
+    The prompt carries the research topic as a domain anchor: without it the
+    model drifts to textbook examples from other fields (live 2026-11-15:
+    perceived organizational support -> employee engagement for an AV-trust
+    project). The output is validated — RQs that name none of the given
+    constructs are rejected so the caller falls back to templates.
+    """
     from app.core.llm import complete
+    topic_line = (f"Research topic/question: {topic}\n" if topic else "")
     prompt = (
         "You are a senior research methodologist. Draft research questions "
         "and hypotheses for the study below.\n\n"
+        f"{topic_line}"
         f"Research gap: {gap_text}\n"
         f"What is unknown: {unknown}\n"
         f"Key constructs: {', '.join(constructs)}\n"
@@ -426,7 +506,8 @@ def _llm_rqs_and_hypotheses(gap_text: str, unknown: str,
         "H2: <mediation hypothesis>\n"
         "H3: <moderation hypothesis>\n"
         "Rules: name the actual constructs (not 'focal predictor'); keep each "
-        "to one sentence; no citations; no markdown."
+        "to one sentence; no citations; no markdown; stay within the "
+        "research topic above — never drift to another field."
     )
     text = complete(
         prompt,
@@ -442,22 +523,30 @@ def _llm_rqs_and_hypotheses(gap_text: str, unknown: str,
             hyps.append(line if line[1:2].isdigit() else f"H: {line}")
     if len(rqs) < 3 or len(hyps) < 3:
         raise ValueError("LLM returned fewer than 3 RQs/hypotheses.")
+    real = [c for c in constructs if c and c != "focal construct"]
+    if real:
+        joined = " ".join(rqs + hyps).lower()
+        if not any(c.lower() in joined for c in real):
+            raise ValueError(
+                "LLM RQs do not name any key construct — refusing off-topic "
+                "output.")
     return rqs[:3], hyps[:3]
 
 
 def _build_rqs_and_hypotheses(gap_text: str, unknown: str,
                               constructs: List[str],
-                              design_type: str) -> tuple:
+                              design_type: str,
+                              topic: str | None = None) -> tuple:
     """LLM-generated RQs/hypotheses when configured; templates otherwise."""
     from app.core import llm as _llm
     if _llm.is_configured():
         try:
             return _llm_rqs_and_hypotheses(gap_text, unknown, constructs,
-                                           design_type)
+                                           design_type, topic=topic)
         except Exception as exc:
             log.warning("LLM RQ generation failed (%s); using templates.",
                         exc)
-    return _template_rqs_and_hypotheses(unknown)
+    return _template_rqs_and_hypotheses(unknown, constructs)
 
 
 # ---------------------------------------------------------------------------
@@ -496,7 +585,8 @@ CONSTRUCT_VOCABULARY: Dict[str, List[str]] = {
 def extract_constructs(gap_text: str | None,
                        unknown_summary: str | None = None,
                        evidence_titles: List[str] | None = None,
-                       top_n: int = 4) -> List[str]:
+                       top_n: int = 4,
+                       extra_text: str | None = None) -> List[str]:
     """Derive research constructs from the approved gap + supporting evidence.
 
     Mines the gap statement, the unknown summary, and the titles of the
@@ -505,9 +595,16 @@ def extract_constructs(gap_text: str | None,
     raw word-frequency fragments (the old _keywords fallback) are never
     returned. Returns [] when nothing matches; the caller then falls back to
     the honest placeholder "focal construct".
+
+    extra_text (e.g. the task's research question) is mined too: a gap
+    statement alone often names no construct ("Atheoretical evidence base:
+    45 of 45 study objectives invoke no named theory ..."), while the
+    research question does ("Trust and acceptance of autonomous vehicles
+    ..."). Without this the LLM prompt gets empty constructs and drifts.
     """
     corpus = " ".join(
-        [gap_text or "", unknown_summary or ""] + list(evidence_titles or [])
+        [gap_text or "", unknown_summary or "", extra_text or ""]
+        + list(evidence_titles or [])
     ).lower()
     if not corpus.strip():
         return []

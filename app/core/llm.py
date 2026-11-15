@@ -42,6 +42,22 @@ def _config() -> dict:
     }
 
 
+def _extract_text(data) -> str:
+    """Pull the assistant text out of a chat-completions payload.
+
+    Defensive: providers sometimes return a message without 'content'
+    (reasoning-only / empty message). Never raise KeyError/IndexError —
+    return "" so the caller can retry or fall back.
+    """
+    try:
+        choices = data.get("choices") or []
+        message = choices[0].get("message") or {}
+        text = message.get("content") or ""
+    except (AttributeError, IndexError, TypeError):
+        return ""
+    return text.strip() if isinstance(text, str) else ""
+
+
 def complete(prompt: str, system: str | None = None,
              max_tokens: int | None = None,
              temperature: float = 0.4) -> str:
@@ -60,30 +76,38 @@ def complete(prompt: str, system: str | None = None,
     messages.append({"role": "user", "content": prompt})
 
     url = cfg["base_url"] + "/chat/completions"
-    try:
-        resp = requests.post(
-            url,
-            headers={"Authorization": f"Bearer {cfg['api_key']}",
-                     "Content-Type": "application/json"},
-            json={"model": cfg["model"],
-                  "messages": messages,
-                  "temperature": temperature,
-                  "max_tokens": max_tokens or cfg["max_tokens"]},
-            timeout=cfg["timeout"])
-    except Exception as exc:
-        raise LLMError(f"LLM request failed: {exc}") from exc
+    # The provider sometimes returns HTTP 200 with a message that carries no
+    # 'content' (observed live 2026-11-15: SenseNova answered v1 fine, then
+    # v2 with a content-less message). Treat a missing/empty content as a
+    # transient failure and retry ONCE before giving up — every caller
+    # already falls back to templates on LLMError.
+    for attempt in range(2):
+        try:
+            resp = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {cfg['api_key']}",
+                         "Content-Type": "application/json"},
+                json={"model": cfg["model"],
+                      "messages": messages,
+                      "temperature": temperature,
+                      "max_tokens": max_tokens or cfg["max_tokens"]},
+                timeout=cfg["timeout"])
+        except Exception as exc:
+            raise LLMError(f"LLM request failed: {exc}") from exc
 
-    if resp.status_code != 200:
-        raise LLMError(f"LLM HTTP {resp.status_code}: "
-                       f"{resp.text[:300]}")
-    try:
-        data = resp.json()
-        text = data["choices"][0]["message"]["content"]
-    except (KeyError, IndexError, ValueError) as exc:
-        raise LLMError(f"Unexpected LLM response shape: {exc}") from exc
-    if not text or not text.strip():
-        raise LLMError("LLM returned empty text.")
-    return text.strip()
+        if resp.status_code != 200:
+            raise LLMError(f"LLM HTTP {resp.status_code}: "
+                           f"{resp.text[:300]}")
+        try:
+            data = resp.json()
+        except ValueError as exc:
+            raise LLMError(f"LLM response is not JSON: {exc}") from exc
+        text = _extract_text(data)
+        if text:
+            return text
+        if attempt == 0:
+            log.warning("LLM returned no content (attempt 1/2); retrying once.")
+    raise LLMError("LLM returned empty text.")
 
 
 def status() -> dict:
