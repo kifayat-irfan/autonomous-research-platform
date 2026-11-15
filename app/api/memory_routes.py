@@ -18,9 +18,25 @@ router = APIRouter(prefix="/memory", tags=["memory"])
 
 @router.post("/projects", response_model=ProjectOut)
 def create_project(payload: ProjectCreate, db: Session = Depends(get_db)):
-    project = agent8.create_project(
-        db, payload.name, payload.description, payload.keywords
-    )
+    from sqlalchemy.exc import IntegrityError
+    # Friendly duplicate handling: project names are unique, so a second
+    # create with the same name used to crash with a bare 500.
+    existing = agent8.get_project_by_name(db, payload.name)
+    if existing is not None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Project '{payload.name}' already exists — open it from "
+                   "the list below instead of creating it again.")
+    try:
+        project = agent8.create_project(
+            db, payload.name, payload.description, payload.keywords
+        )
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail=f"Project '{payload.name}' already exists — open it from "
+                   "the list below instead of creating it again.")
     return ProjectOut.model_validate(project).model_dump()
 
 

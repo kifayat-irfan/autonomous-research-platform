@@ -43,6 +43,10 @@ def get_or_create_project(db: Session, name: str,
     return project
 
 
+def get_project_by_name(db: Session, name: str) -> Project | None:
+    return db.scalar(select(Project).where(Project.name == name))
+
+
 def get_project(db: Session, project_id: str) -> Project | None:
     return db.get(Project, project_id)
 

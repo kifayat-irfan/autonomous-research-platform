@@ -197,3 +197,22 @@ def test_client_query_still_ranks_tr_part_f_top():
          "acceptance", "traffic psychology"])
     assert "Part F" in results[0]["journal_name"]
     db.close()
+
+
+# ---------------------------------------------------------------------------
+# 4. Agent 8 — duplicate project name (found live 2026-11-15)
+# ---------------------------------------------------------------------------
+
+def test_duplicate_project_name_is_clean_400():
+    """Creating the same project twice must return a friendly 400,
+    not a bare 500 (unique constraint on Project.name)."""
+    from fastapi import HTTPException
+    from app.api.memory_routes import create_project
+    from app.models.schemas import ProjectCreate
+    db = _mem_db()
+    create_project(ProjectCreate(name="Client Mobility Research"), db)
+    with pytest.raises(HTTPException) as exc:
+        create_project(ProjectCreate(name="Client Mobility Research"), db)
+    assert exc.value.status_code == 400
+    assert "already exists" in exc.value.detail
+    db.close()
